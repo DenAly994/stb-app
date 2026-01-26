@@ -26,12 +26,12 @@ import {
 // 1. KONFIGURASI FIREBASE (PASTIKAN TETAP MENGGUNAKAN DATA ANDA)
 // ==========================================================
 const myLocalFirebaseConfig = {
-  apiKey: "AIzaSyAfFX2mj15m6dIafD9Wcp05wVHSIDfQgYc",
-  authDomain: "stb-generator-pro.firebaseapp.com",
-  projectId: "stb-generator-pro",
-  storageBucket: "stb-generator-pro.firebasestorage.app",
-  messagingSenderId: "893420515785",
-  appId: "1:893420515785:web:a5a99c80de5d7c88afb818"
+  apiKey: "ISI_API_KEY_ANDA",
+  authDomain: "PROJECT_ID.firebaseapp.com",
+  projectId: "PROJECT_ID",
+  storageBucket: "PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "SENDER_ID",
+  appId: "APP_ID"
 };
 
 // DAFTAR EMAIL ADMIN (Whitelist Keamanan)
