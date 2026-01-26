@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* Jika baris di atas tidak bekerja, gunakan cara lama: */
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities; 
+*/
