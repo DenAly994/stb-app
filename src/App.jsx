@@ -1,31 +1,30 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { initializeApp, getApps } from 'firebase/app';
 import { 
-  Copy, RefreshCw, Trash2, CheckCircle, Clock, Calendar, Settings, 
-  User, AlertCircle, ShieldCheck, Save, CloudIcon, Key, LogOut, 
-  TrendingUp, Wallet, Zap, Search, Bell, ExternalLink, ChevronRight,
-  Database, Smartphone, Send, LayoutDashboard, DatabaseZap, ClipboardList,
-  MessageSquare, FileText, Lock, UserCheck, Share2, Users, CreditCard, History,
-  Wifi, Medal, Trophy, Crown, Gem, Star, UserPlus, Shield, Layers,
-  Download, Eye, EyeOff, BarChart3, Link as LinkIcon, ArrowUpRight,
-  PlusCircle, LockKeyhole, Activity, TrendingDown, DollarSign, PieChart,
-  Filter, Sparkles, Briefcase, Terminal, HardDrive, Brush, Info
-} from 'lucide-react';
-
-// Firebase Imports
-import { initializeApp, getApps, getApp } from 'firebase/app';
+  getFirestore, collection, addDoc, onSnapshot, 
+  doc, deleteDoc, serverTimestamp, setDoc, updateDoc, writeBatch 
+} from 'firebase/firestore';
 import { 
-  getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, 
-  signOut, signInWithCustomToken 
+  getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged 
 } from 'firebase/auth';
 import { 
-  getFirestore, doc, setDoc, getDoc, collection, onSnapshot, 
-  addDoc, deleteDoc, updateDoc, query, where, orderBy 
-} from 'firebase/firestore';
+  Shield, RefreshCw, Crown, Gem, Award, 
+  Zap, HardDrive, Trash2, 
+  MessageSquare, LayoutDashboard, Database, 
+  ArrowRight, Search, Users, Settings,
+  BellRing, Smartphone, Filter, 
+  PlusCircle, RotateCcw, Copy, 
+  Navigation, Mail, TerminalSquare,
+  ListPlus, Wallet, ArrowUpRight, Receipt, FileText,
+  Flame, Star, Info, Target,
+  Clock, Layers, Bell, FileCode, Upload, Send, UserCheck, Sparkles, UserCog, LogOut, XCircle,
+  Eye, EyeOff, Cloud, CloudOff, Save, Check, Wifi, AlertTriangle, Lock,
+  Printer, Skull, FileDown, BarChart3, TrendingUp, TrendingDown, Activity, SendHorizontal,
+  Edit3, Bot, Shuffle
+} from 'lucide-react';
 
-// ==========================================================
-// 1. KONFIGURASI FIREBASE (PASTIKAN TETAP MENGGUNAKAN DATA ANDA)
-// ==========================================================
-const myLocalFirebaseConfig = {
+// --- CONFIGURATION: MASUKKAN DATA FIREBASE DI SINI ---
+const firebaseConfig = {
   apiKey: "AIzaSyAfFX2mj15m6dIafD9Wcp05wVHSIDfQgYc",
   authDomain: "stb-generator-pro.firebaseapp.com",
   projectId: "stb-generator-pro",
@@ -34,656 +33,1151 @@ const myLocalFirebaseConfig = {
   appId: "1:893420515785:web:a5a99c80de5d7c88afb818"
 };
 
-// DAFTAR EMAIL ADMIN (Whitelist Keamanan)
-const ALLOWED_ADMINS = [
-  "denalyjunior@gmail.com",
-  "denalyjr@gmail.com",
-  "admin-stb@gmail.com"
-];
+// --- GLOBAL CONSTANTS ---
+const DEFAULT_APP_ID = "stb-sewa-tool-v3-executive";
+const APP_NAME = "STB - PRO MANAGE";
 
-const TIER_META = [
-  { id: 'bronze', name: 'Bronze', months: 3, color: 'from-orange-400 to-orange-700', icon: Medal, textColor: 'text-orange-600' },
-  { id: 'silver', name: 'Silver', months: 6, color: 'from-slate-300 to-slate-500', icon: Trophy, textColor: 'text-slate-500' },
-  { id: 'gold', name: 'Gold', months: 9, color: 'from-yellow-400 to-yellow-600', icon: Crown, textColor: 'text-yellow-600' },
-  { id: 'diamond', name: 'Diamond', months: 12, color: 'from-cyan-400 to-blue-600', icon: Gem, textColor: 'text-cyan-600' },
-];
+// --- FIREBASE INITIALIZATION ---
+let firebaseApp, auth, db;
+const isConfigProvided = firebaseConfig && firebaseConfig.apiKey !== "";
 
-const getFinalConfig = () => {
-  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    try { return JSON.parse(__firebase_config); } catch (e) { return myLocalFirebaseConfig; }
+try {
+  if (isConfigProvided) {
+    firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  } else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    firebaseApp = getApps().length === 0 ? initializeApp(JSON.parse(__firebase_config)) : getApps()[0];
   }
-  return myLocalFirebaseConfig;
-};
-
-const firebaseConfig = getFinalConfig();
-const isConfigValid = firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("ISI_API_KEY_ANDA");
-
-let app, auth, db, googleProvider;
-if (isConfigValid) {
-  try {
-    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-    db = getFirestore(app);
-    googleProvider = new GoogleAuthProvider();
-  } catch (err) { console.error("Firebase Initialization Error:", err); }
+  
+  if (firebaseApp) {
+    auth = getAuth(firebaseApp);
+    db = getFirestore(firebaseApp);
+  }
+} catch (e) {
+  console.error("Firebase Init Critical Error:", e);
 }
 
-const appId = 'stb-enterprise-v14'; 
-
 const App = () => {
+  // --- STATE: AUTH & SYSTEM ---
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [tokens, setTokens] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [latestToken, setLatestToken] = useState(null);
-  const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [statusMsg, setStatusMsg] = useState({ type: '', text: '' });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [authError, setAuthError] = useState(null); // Deteksi error domain
-  
-  const [memberInfo, setMemberInfo] = useState({ name: '', phone: '', password: '' });
-  const [isAccumulating, setIsAccumulating] = useState(false);
-  const [existingExpiry, setExistingExpiry] = useState(null);
+  const [appId, setAppId] = useState(typeof __app_id !== 'undefined' ? __app_id : DEFAULT_APP_ID);
+  const [isSettingsSynced, setIsSettingsSynced] = useState(false);
+  const [dbStatus, setDbStatus] = useState('connecting');
 
-  const [config, setConfig] = useState({
-    businessName: 'STB PRO ENTERPRISE',
-    fonnteToken: '', telegramToken: '', telegramChatId: '',
-    autoSend: true,
-    prices: { bronze: 100000, silver: 300000, gold: 600000, diamond: 900000 },
-    waTemplate: "*STRUK AKTIVASI {{biz}} - {{tier}}*\n\nHallo {{name}},\nTerima kasih! Layanan Anda telah aktif.\n\n🏆 Paket: {{tier}}\n🔑 Token: {{code}}\n🔐 Pass: {{password}}\n⏳ Masa Aktif: {{duration}} Bulan\n🗓️ Berlaku s/d: {{expiry}}\n\n_Nikmati layanan terbaik kami._"
+  // --- STATE: DATA ---
+  const [history, setHistory] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [toast, setToast] = useState(null);
+  
+  // --- STATE: FORMS & FILTERS ---
+  const [selectedTier, setSelectedTier] = useState('Bronze');
+  const [clientName, setClientName] = useState('');
+  const [clientWA, setClientWA] = useState('');
+  const [clientNotes, setClientNotes] = useState('');
+  const [generatedData, setGeneratedData] = useState(null);
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
+  const [existingMember, setExistingMember] = useState(null);
+  
+  // --- STATE: SEARCH & FILTER ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tierFilter, setTierFilter] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortConfig, setSortConfig] = useState('newest');
+
+  // --- STATE: MODALS & EDITING ---
+  const [editingItem, setEditingItem] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [showSecrets, setShowSecrets] = useState(false);
+  const [printMode, setPrintMode] = useState(false);
+  const [showCrmTemplateEditor, setShowCrmTemplateEditor] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // --- STATE: SETTINGS ---
+  const [revenueTarget, setRevenueTarget] = useState(10000000);
+  const [apiKeys, setApiKeys] = useState({
+    fonnteToken: '',
+    telegramToken: '',
+    telegramChatId: '',
+    warningDays: 3,
+    waTemplate: `🚀 *${APP_NAME}* 🚀\n------------------------------------------\n✅ *AKTIVASI BERHASIL*\nRef: #INV-{orderNum}\n\nTerima kasih {nama}, paket Anda telah aktif!\n\n📦 *Paket:* {paket}\n🌐 *Unit ID:* \`{id}\`\n🔑 *Password:* \`{pass}\`\n📅 *Masa Aktif:* s/d {expired}\n\n*Penting:* Simpan pesan ini untuk klaim dukungan atau perpanjangan.`,
+    reminderTemplate: `⚠️ *URGENT: LAYANAN BERAKHIR* ⚠️\n------------------------------------------\nHalo *{nama}*, paket *{paket}* Anda akan berakhir pada:\n\n📅 *Tanggal:* {expired}\n\nSegera hubungi admin untuk perpanjangan agar akses tidak terputus. Terima kasih!`,
+    crmTemplate: `Halo *{nama}*! 👋\n\nKami dari ${APP_NAME} ingin menyapa Anda. Apakah ada kendala dengan layanan kami? Ada promo khusus untuk perpanjangan hari ini lho!\n\nBalas pesan ini untuk info lebih lanjut.`,
+    telegramTemplate: `🤖 *Laporan Transaksi Baru*\n\n👤 Klien: {nama}\n📦 Paket: {paket}\n💰 Nominal: {amount}\n📝 Tipe: {type}\n📅 Exp: {expired}\n\n_System Auto-Report_`
   });
 
-  // 2. AUTH & SECURITY WITH ERROR HANDLING
-  useEffect(() => {
-    if (!isConfigValid || !auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        if (ALLOWED_ADMINS.includes(currentUser.email)) {
-          setUser(currentUser);
-          setIsAdmin(true);
-        } else {
-          showStatus('error', 'Akses Ditolak! Email tidak ada dalam Whitelist.');
-          signOut(auth);
+  const [customTiers, setCustomTiers] = useState({
+    Bronze: { price: 100000, months: 3, prefix: 'STB-BRZ', accent: 'bg-orange-600', icon: 'Award', color: 'text-orange-600 bg-orange-50 border-orange-200' },
+    Silver: { price: 300000, months: 6, prefix: 'STB-SLV', accent: 'bg-slate-600', icon: 'Zap', color: 'text-slate-600 bg-slate-50 border-slate-200' },
+    Gold: { price: 600000, months: 9, prefix: 'STB-GLD', accent: 'bg-yellow-600', icon: 'Crown', color: 'text-yellow-600 bg-yellow-50 border-yellow-200' },
+    Diamond: { price: 900000, months: 12, prefix: 'STB-DMD', accent: 'bg-blue-600', icon: 'Gem', color: 'text-blue-600 bg-blue-50 border-blue-200' }
+  });
+
+  const iconMap = { Award, Zap, Crown, Gem, Shield, Star };
+
+  // --- INTELLIGENCE CORE ---
+  const intelligence = useMemo(() => {
+    const now = Date.now();
+    const revenue = history.reduce((acc, curr) => acc + (customTiers[curr.tier]?.price || 0), 0);
+    const potentialRevenue = history
+        .filter(h => h.expiryTimestamp > now && h.expiryTimestamp <= now + (30 * 24 * 60 * 60 * 1000))
+        .reduce((acc, curr) => acc + (customTiers[curr.tier]?.price || 0), 0);
+    const expiredCount = history.filter(h => h.expiryTimestamp < now).length;
+
+    const monthlyStats = history.reduce((acc, curr) => {
+        if (!curr.createdAt) return acc;
+        const date = new Date(curr.createdAt.seconds * 1000);
+        const key = date.toLocaleString('default', { month: 'short', year: '2-digit' });
+        const sortKey = date.getTime();
+        if (!acc[key]) acc[key] = { name: key, value: 0, sortKey, count: 0 };
+        acc[key].value += (customTiers[curr.tier]?.price || 0);
+        acc[key].count += 1;
+        return acc;
+    }, {});
+
+    const chartData = Object.values(monthlyStats).sort((a, b) => a.sortKey - b.sortKey).slice(-6);
+    const currentMonthData = chartData[chartData.length - 1] || { value: 0 };
+    const lastMonthData = chartData[chartData.length - 2] || { value: 0 };
+    
+    let trendPercentage = 0;
+    if (lastMonthData.value > 0) {
+        trendPercentage = ((currentMonthData.value - lastMonthData.value) / lastMonthData.value) * 100;
+    } else if (currentMonthData.value > 0) {
+        trendPercentage = 100;
+    }
+
+    const crmProfiles = history.reduce((acc, curr) => {
+        const phoneKey = curr.phone || 'unknown';
+        if (!acc[phoneKey]) {
+            acc[phoneKey] = { client: curr.client, phone: curr.phone, totalSpend: 0, transactionCount: 0, status: 'Inactive', tier: curr.tier };
         }
-      } else {
-        setUser(null);
-        setIsAdmin(false);
-      }
+        acc[phoneKey].totalSpend += (customTiers[curr.tier]?.price || 0);
+        acc[phoneKey].transactionCount += 1;
+        if (curr.expiryTimestamp > now) acc[phoneKey].status = 'Active';
+        return acc;
+    }, {});
+
+    const clientLTV = history.reduce((acc, curr) => {
+        const price = customTiers[curr.tier]?.price || 0;
+        acc[curr.client] = (acc[curr.client] || 0) + price;
+        return acc;
+    }, {});
+
+    const clientStats = history.reduce((acc, curr) => {
+        acc[curr.client] = (acc[curr.client] || 0) + 1;
+        return acc;
+    }, {});
+
+    const tierCounts = history.reduce((acc, curr) => {
+        acc[curr.tier] = (acc[curr.tier] || 0) + 1;
+        return acc;
+    }, {});
+    const hotTier = Object.keys(tierCounts).reduce((a, b) => (tierCounts[a] || 0) > (tierCounts[b] || 0) ? a : b, 'Bronze');
+    
+    return { 
+        revenue, potentialRevenue, clientStats, clientLTV, 
+        crmProfiles: Object.values(crmProfiles), hotTier, expiredCount,
+        chartData, trendPercentage
+    };
+  }, [history, customTiers, selectedTier]);
+
+  const clientSuggestions = useMemo(() => {
+    return [...new Set(history.map(h => h.client))].sort();
+  }, [history]);
+
+  const sortedHistory = useMemo(() => {
+    return [...history].sort((a, b) => {
+      if (sortConfig === 'name') return a.client.localeCompare(b.client);
+      if (sortConfig === 'expiry') return (a.expiryTimestamp || 0) - (b.expiryTimestamp || 0);
+      return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
     });
+  }, [history, sortConfig]);
+
+  const filteredHistory = useMemo(() => {
+    return sortedHistory.filter(item => {
+      const target = `${item.client} ${item.name} ${item.notes || ''}`.toLowerCase();
+      const matchesSearch = target.includes(searchTerm.toLowerCase());
+      const isExpired = Date.now() > (item.expiryTimestamp || 0);
+      const matchesTier = tierFilter === 'all' || item.tier === tierFilter;
+      const matchesStatus = filterStatus === 'all' || (filterStatus === 'active' && !isExpired) || (filterStatus === 'expired' && isExpired);
+      return matchesSearch && matchesTier && matchesStatus;
+    });
+  }, [sortedHistory, searchTerm, tierFilter, filterStatus]);
+  
+  // --- UTILS ---
+  const formatWA = (phone) => {
+    let cleaned = String(phone || '').replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.substring(1);
+    else if (cleaned.startsWith('8')) cleaned = '62' + cleaned;
+    return cleaned;
+  };
+
+  const toTitleCase = (str) => {
+    if (!str) return '';
+    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+  };
+
+  const formatIDR = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg: String(msg), type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Teks disalin ke clipboard!");
+    } catch (err) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast("Teks disalin!");
+      } catch (e) {
+        showToast("Gagal menyalin text", "error");
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  const parseTemplate = (template, data) => {
+    return String(template || '')
+      .replace(/{nama}/g, data.client || '')
+      .replace(/{id}/g, data.name || '')
+      .replace(/{pass}/g, data.pass || '')
+      .replace(/{paket}/g, data.tier || '')
+      .replace(/{expired}/g, data.expiryText || '')
+      .replace(/{orderNum}/g, data.orderNum || '000')
+      .replace(/{amount}/g, data.amount ? formatIDR(data.amount) : 'Rp -')
+      .replace(/{type}/g, data.type || 'Update');
+  };
+
+  // --- NEW: ID GENERATOR HELPER ---
+  const generateNetworkName = (tierKey) => {
+      const tier = customTiers[tierKey] || customTiers['Bronze'];
+      return `${tier.prefix}-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  };
+
+  // --- COMMUNICATION HELPERS ---
+  const sendFonnte = async (target, message) => {
+    if (!apiKeys.fonnteToken) {
+        showToast("Token Fonnte kosong! Membuka WA Web...", "error");
+        window.open(`https://wa.me/${target}?text=${encodeURIComponent(message)}`);
+        return false;
+    }
+    
+    setLoading(true);
+    try {
+        const data = new URLSearchParams();
+        data.append('target', target);
+        data.append('message', message);
+
+        const res = await fetch('https://api.fonnte.com/send', {
+            method: 'POST',
+            headers: { 'Authorization': apiKeys.fonnteToken },
+            body: data
+        });
+        const resData = await res.json();
+        
+        if (resData.status) {
+            showToast("Pesan Terkirim via Fonnte! 🚀");
+            return true;
+        } else {
+            console.error("Fonnte API Fail:", resData);
+            showToast("Gagal kirim Fonnte, membuka WA Web...", "error");
+            window.open(`https://wa.me/${target}?text=${encodeURIComponent(message)}`);
+            return false;
+        }
+    } catch (e) {
+        console.error("Fonnte Network Error:", e);
+        showToast("Koneksi Error, membuka WA Web...", "error");
+        window.open(`https://wa.me/${target}?text=${encodeURIComponent(message)}`);
+        return false;
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const sendTelegram = async (message) => {
+      if (!apiKeys.telegramToken || !apiKeys.telegramChatId) return;
+      try {
+          const url = `https://api.telegram.org/bot${apiKeys.telegramToken}/sendMessage`;
+          await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: apiKeys.telegramChatId, text: message, parse_mode: 'Markdown' })
+          });
+      } catch (e) { console.error("Telegram Error (CORS/Net):", e); }
+  };
+
+  // --- EFFECTS ---
+  useEffect(() => {
+    if (clientWA.length >= 10) {
+      const cleanInput = formatWA(clientWA);
+      const match = history
+        .filter(h => h.phone === cleanInput)
+        .sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
+      
+      if (match) {
+        setDuplicateWarning(`Member Terdeteksi: ${match.client} (${intelligence.clientStats[match.client] || 0}x Order)`);
+        setExistingMember(match);
+        if (!clientName) setClientName(match.client); 
+      } else { 
+        setDuplicateWarning(null); 
+        setExistingMember(null);
+      }
+    } else { 
+      setDuplicateWarning(null); 
+      setExistingMember(null);
+    }
+  }, [clientWA, history, intelligence.clientStats]);
+
+  useEffect(() => {
+    if (clientName.length >= 3 && !clientWA) {
+      const match = history
+        .filter(h => h.client.toLowerCase() === clientName.toLowerCase())
+        .sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))[0];
+      if (match) {
+        setClientWA(match.phone);
+        setDuplicateWarning(`Data ${match.client} ditemukan. WA terisi otomatis.`);
+        setTimeout(() => setDuplicateWarning(null), 3000);
+      }
+    }
+  }, [clientName]); 
+
+  useEffect(() => {
+    const cachedSettings = localStorage.getItem(`stb_settings_${appId}`);
+    if (cachedSettings) {
+        try {
+            const parsed = JSON.parse(cachedSettings);
+            if (parsed.apiKeys) setApiKeys(prev => ({...prev, ...parsed.apiKeys}));
+            if (parsed.revenueTarget) setRevenueTarget(Number(parsed.revenueTarget));
+            if (parsed.tiers) setCustomTiers(parsed.tiers);
+        } catch (e) { console.error("Cache parsing error", e); }
+    }
+  }, [appId]);
+
+  useEffect(() => {
+    if (!auth) return;
+    const initAuth = async () => {
+      setIsAuthLoading(true);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) { console.error("Auth Fail", err); } finally { setIsAuthLoading(false); }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); if (u) setDbStatus('connected'); });
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = async () => {
-    setAuthError(null);
-    try {
-      if (!auth) throw new Error("Firebase not initialized");
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Login Error:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        setAuthError({
-          title: 'Domain Tidak Diizinkan',
-          message: `URL ini (${window.location.hostname}) belum didaftarkan di Firebase Console.`,
-          guide: 'Buka Firebase > Authentication > Settings > Authorized Domains > Tambahkan domain ini.'
-        });
-      } else {
-        showStatus('error', 'Gagal Login: ' + error.message);
-      }
-    }
-  };
-
-  // 3. CLOUD SYNC & AUDIT LOGS
   useEffect(() => {
-    if (!user || !db || !isAdmin) return;
-
-    // Load Config
-    const configDocRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
-    getDoc(configDocRef).then((docSnap) => {
-      if (docSnap.exists()) setConfig(prev => ({ ...prev, ...docSnap.data() }));
-    });
-
-    // Sync Tokens
-    const tokensColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'tokens');
-    const unsubscribeTokens = onSnapshot(tokensColRef, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        expiryDate: doc.data().expiryDate?.toDate() || new Date()
-      }));
-      setTokens([...list].sort((a, b) => b.createdAt - a.createdAt));
-      setIsCloudConnected(true);
-    }, (err) => {
-      console.error("Firestore error:", err);
-      setIsCloudConnected(false);
-    });
-
-    // Sync Audit Logs (Limit 20)
-    const logsColRef = collection(db, 'artifacts', appId, 'users', user.uid, 'audit_logs');
-    const unsubscribeLogs = onSnapshot(logsColRef, (snapshot) => {
-      const logList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLogs(logList.sort((a, b) => b.timestamp - a.timestamp).slice(0, 20));
-    });
-
-    return () => { unsubscribeTokens(); unsubscribeLogs(); };
-  }, [user, isAdmin]);
-
-  // 4. SMART ANALYTICS v15 (Growth & Stats)
-  const stats = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-
-    const revenue = tokens.reduce((acc, t) => acc + (t.price || 0), 0);
-    const activeMembers = tokens.filter(t => t.expiryDate > now);
-    
-    const revenueThisMonth = tokens
-      .filter(t => t.createdAt.getMonth() === currentMonth)
-      .reduce((acc, t) => acc + (t.price || 0), 0);
-    
-    const revenueLastMonth = tokens
-      .filter(t => t.createdAt.getMonth() === lastMonth)
-      .reduce((acc, t) => acc + (t.price || 0), 0);
-
-    const growth = revenueLastMonth === 0 ? 100 : ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100;
-
-    const expiringSoon = activeMembers.filter(t => (t.expiryDate - now) < (3 * 24 * 60 * 60 * 1000));
-
-    return { 
-      revenue, revenueThisMonth, growth,
-      active: activeMembers.length, 
-      total: tokens.length,
-      expiringSoon
-    };
-  }, [tokens]);
-
-  // 5. SMART LOGIC (Auto-Fill)
-  const handleNameInput = (val) => {
-    setMemberInfo(prev => ({ ...prev, name: val }));
-    if (val.length > 2) {
-      const match = tokens.find(t => t.memberName?.toLowerCase().includes(val.toLowerCase()));
-      if (match && !memberInfo.phone) setMemberInfo(prev => ({ ...prev, phone: match.memberPhone }));
-    }
-  };
-
-  useEffect(() => {
-    if (memberInfo.phone.length > 8) {
-      const now = new Date();
-      const activeMatch = tokens.filter(t => t.memberPhone === memberInfo.phone && t.expiryDate > now).sort((a,b)=>b.expiryDate - a.expiryDate)[0];
-      if (activeMatch) {
-        setIsAccumulating(true);
-        setExistingExpiry(activeMatch.expiryDate);
-      } else {
-        setIsAccumulating(false);
-        setExistingExpiry(null);
-      }
-    }
-  }, [memberInfo.phone, tokens]);
-
-  // 6. CORE ACTIONS
-  const showStatus = (type, text) => {
-    setStatusMsg({ type, text });
-    setTimeout(() => setStatusMsg({ type: '', text: '' }), 5000);
-  };
-
-  const addAuditLog = async (action) => {
     if (!user || !db) return;
+    const unsubHistory = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'history'), (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setHistory(data);
+    }, (err) => { console.error("History sync error", err); setDbStatus('error'); });
+    const unsubLogs = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLogs(data.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)).slice(0, 15));
+    });
+    const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setApiKeys(prev => ({ ...prev, ...data }));
+        if (data.revenueTarget) setRevenueTarget(Number(data.revenueTarget));
+        if (data.tiers) setCustomTiers(prev => ({...prev, ...data.tiers}));
+        localStorage.setItem(`stb_settings_${appId}`, JSON.stringify(data));
+        setIsSettingsSynced(true);
+      }
+    });
+    return () => { unsubHistory(); unsubSettings(); unsubLogs(); };
+  }, [user, appId]);
+
+  // --- ACTIONS ---
+  const ensureAuth = async () => {
+    if (auth.currentUser) return auth.currentUser;
     try {
-      const logRef = collection(db, 'artifacts', appId, 'users', user.uid, 'audit_logs');
-      await addDoc(logRef, {
-        admin: user.displayName,
-        action,
-        timestamp: Date.now()
-      });
-    } catch (e) { console.error("Audit log failed"); }
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            const cred = await signInWithCustomToken(auth, __initial_auth_token);
+            return cred.user;
+        } else {
+            const cred = await signInAnonymously(auth);
+            return cred.user;
+        }
+    } catch (e) {
+        throw new Error("Gagal login otomatis. Cek koneksi.");
+    }
   };
 
-  const handleGenerate = async (tierObj) => {
-    if (!user || !db || !isAdmin) return;
-    if (!memberInfo.phone || !memberInfo.name) return showStatus('error', 'Identitas member wajib lengkap!');
+  const handleSaveSettings = async (specificMsg = "Settings Saved Successfully!") => {
+    if (!db) return showToast("Database offline", "error");
+    setLoading(true);
+    try {
+        await ensureAuth();
+        const configRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings');
+        const payload = { ...apiKeys, revenueTarget, tiers: customTiers };
+        await setDoc(configRef, payload, { merge: true });
+        localStorage.setItem(`stb_settings_${appId}`, JSON.stringify(payload));
+        setIsSettingsSynced(true);
+        showToast(specificMsg);
+        setShowCrmTemplateEditor(false); 
+    } catch (e) {
+        console.error("Save Error:", e);
+        showToast("Gagal menyimpan: " + e.message, "error");
+    } finally { setLoading(false); }
+  };
+
+  // --- SMART RENEWAL WITH ID SWITCHING (V3.8) ---
+  const handleSmartRenewFromGenerator = async () => {
+    if (!db || loading || !existingMember) return;
+    const tierData = customTiers[selectedTier];
+    if (!tierData) return showToast("Paket tidak valid", "error");
 
     setLoading(true);
-    const price = config.prices[tierObj.id] || 0;
-    const baseDate = isAccumulating && existingExpiry ? new Date(existingExpiry) : new Date();
-    const exp = new Date(baseDate);
-    exp.setMonth(exp.getMonth() + tierObj.months);
+    try {
+        await ensureAuth();
+        
+        // 1. Time Logic
+        const now = Date.now();
+        let lastExpiry = existingMember.expiryTimestamp && typeof existingMember.expiryTimestamp === 'number' ? existingMember.expiryTimestamp : 0;
+        const isActive = lastExpiry > now;
+        const basisTime = isActive ? lastExpiry : now;
+        const newExpiry = new Date(basisTime);
+        newExpiry.setMonth(newExpiry.getMonth() + parseInt(tierData.months));
+        const expiryText = newExpiry.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const code = `STB-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+        // 2. ID Switch Logic (V3.8 Feature)
+        let finalName = existingMember.name;
+        let idChanged = false;
+        
+        // Check if tier changed, if yes, regenerate ID
+        if (selectedTier !== existingMember.tier) {
+            finalName = generateNetworkName(selectedTier);
+            idChanged = true;
+        }
 
-    const newToken = {
-      code, tier: tierObj.name, duration: tierObj.months, price,
-      memberName: memberInfo.name, memberPhone: memberInfo.phone,
-      password: memberInfo.password || 'PASS-' + Math.floor(1000 + Math.random() * 9000),
-      createdAt: new Date(), expiryDate: exp,
+        // 3. Update DB
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', existingMember.id), {
+            expiryTimestamp: newExpiry.getTime(), 
+            expiryText: expiryText, 
+            tier: selectedTier,
+            name: finalName // Save new ID if changed
+        });
+        
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
+            type: idChanged ? 'Upgrade Paket' : 'Perpanjang (Gen)', 
+            client: existingMember.client, 
+            tier: selectedTier, 
+            amount: tierData.price, 
+            timestamp: serverTimestamp(), 
+            targetId: existingMember.id
+        });
+
+        // 4. Notifications
+        const tempEntry = { ...existingMember, name: finalName, tier: selectedTier, expiryText: expiryText, amount: tierData.price, type: idChanged ? 'Upgrade & Renew' : 'Renewal' };
+        
+        if (apiKeys.fonnteToken) {
+             const msg = parseTemplate(apiKeys.waTemplate, tempEntry);
+             fetch('https://api.fonnte.com/send', { method: 'POST', headers: { 'Authorization': apiKeys.fonnteToken }, body: new URLSearchParams({ target: existingMember.phone, message: msg }) }).catch(console.error);
+        }
+        sendTelegram(parseTemplate(apiKeys.telegramTemplate, tempEntry));
+
+        setGeneratedData(tempEntry); setClientName(''); setClientWA(''); setClientNotes(''); setExistingMember(null);
+        showToast(isActive ? "Member Diperpanjang (Akumulasi)!" : "Member Diaktifkan Kembali!");
+    } catch(e) { showToast("Gagal Perpanjang: " + e.message, "error"); } finally { setLoading(false); }
+  };
+
+  const handleGenerate = async () => {
+    if (!db) return showToast("Database belum siap!", "error");
+    if (!clientName.trim()) return showToast("Nama klien wajib diisi!", "error");
+    if (loading) return;
+    
+    setLoading(true);
+    try {
+      const currentUser = await ensureAuth();
+      const tier = customTiers[selectedTier];
+      // Use Helper
+      const networkName = generateNetworkName(selectedTier); 
+      
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + tier.months);
+      
+      const entry = {
+        client: toTitleCase(clientName), phone: formatWA(clientWA), notes: clientNotes, 
+        name: networkName, pass: Math.random().toString(36).substring(2, 10).toUpperCase(), 
+        tier: selectedTier, expiryTimestamp: expiryDate.getTime(),
+        expiryText: expiryDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+        createdAt: serverTimestamp(), creatorId: currentUser.uid, orderNum: history.length + 1
+      };
+
+      const docRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'history'), entry);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
+          type: 'Aktivasi Baru', client: entry.client, tier: entry.tier, amount: tier.price, timestamp: serverTimestamp(), targetId: docRef.id
+      });
+
+      const fullEntry = { ...entry, amount: tier.price, type: 'New Activation' };
+
+      if (apiKeys.fonnteToken) {
+          const msg = parseTemplate(apiKeys.waTemplate, fullEntry);
+          fetch('https://api.fonnte.com/send', { method: 'POST', headers: { 'Authorization': apiKeys.fonnteToken }, body: new URLSearchParams({ target: entry.phone, message: msg }) }).catch((err) => console.log("WA error:", err));
+      }
+      sendTelegram(parseTemplate(apiKeys.telegramTemplate, fullEntry));
+
+      setGeneratedData(entry); setClientName(''); setClientWA(''); setClientNotes('');
+      showToast("Token Generated & Saved!");
+    } catch (e) { showToast("Gagal Generate: " + e.message, "error"); } finally { setLoading(false); }
+  };
+
+  const handleRenew = async (item) => {
+    if (!db || loading) return;
+    setLoading(true);
+    try {
+        await ensureAuth();
+        const tierData = customTiers[item.tier];
+        const now = Date.now();
+        let lastExpiry = item.expiryTimestamp && typeof item.expiryTimestamp === 'number' ? item.expiryTimestamp : 0;
+        const isActive = lastExpiry > now;
+        const basisTime = isActive ? lastExpiry : now;
+        const newExpiry = new Date(basisTime);
+        newExpiry.setMonth(newExpiry.getMonth() + parseInt(tierData.months));
+        const expiryText = newExpiry.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', item.id), {
+            expiryTimestamp: newExpiry.getTime(), expiryText: expiryText
+        });
+        
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
+            type: 'Perpanjang', client: item.client, tier: item.tier, amount: tierData.price, timestamp: serverTimestamp(), targetId: item.id
+        });
+        
+        const tempEntry = { ...item, expiryText: expiryText, amount: tierData.price, type: 'Quick Renew' };
+        sendTelegram(parseTemplate(apiKeys.telegramTemplate, tempEntry));
+
+        showToast(isActive ? `Terakumulasi s/d ${expiryText}` : `Diaktifkan s/d ${expiryText}`);
+    } catch (e) { showToast("Gagal Update: " + e.message, "error"); } finally { setLoading(false); }
+  };
+
+  const handleCRMFollowUp = async (profile) => {
+      const msg = parseTemplate(apiKeys.crmTemplate || "Halo {nama}, ayo sewa lagi!", { client: profile.client });
+      await sendFonnte(profile.phone, msg);
+  };
+
+  const handleDatabaseMessage = async (item) => {
+      const isExpired = Date.now() > (item.expiryTimestamp || 0);
+      let msg = "";
+      if (isExpired) { msg = parseTemplate(apiKeys.reminderTemplate, item); } 
+      else { msg = parseTemplate(apiKeys.waTemplate, item); }
+      if (window.confirm(`Kirim pesan ke ${item.client} via Fonnte?`)) {
+          await sendFonnte(item.phone, msg);
+      }
+  };
+
+  // --- UPDATE WITH ID SWITCHING (V3.8) ---
+  const handleUpdate = async () => {
+    if (!db || !editingItem) return;
+    try {
+      await ensureAuth();
+      
+      let finalName = editingItem.name;
+      const targetTier = customTiers[editingItem.tier];
+      
+      // Check if current ID matches target tier prefix
+      if (targetTier && !finalName.startsWith(targetTier.prefix)) {
+          finalName = generateNetworkName(editingItem.tier); // Auto switch ID
+      }
+
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', editingItem.id), {
+        client: editingItem.client, 
+        phone: editingItem.phone, 
+        notes: editingItem.notes, 
+        tier: editingItem.tier,
+        name: finalName // Save new ID
+      });
+      showToast("Data Berhasil Diupdate!"); setEditingItem(null);
+    } catch (e) { showToast("Gagal Update: " + e.message, "error"); }
+  };
+
+  const handleBatchPurge = async () => {
+      if (!db || loading) return;
+      const expiredItems = history.filter(h => (h.expiryTimestamp || 0) < Date.now());
+      if (expiredItems.length === 0) return showToast("Tidak ada data expired.", "error");
+      setLoading(true);
+      try {
+          await ensureAuth();
+          const batch = writeBatch(db);
+          const toDelete = expiredItems.slice(0, 450);
+          toDelete.forEach(item => { batch.delete(doc(db, 'artifacts', appId, 'public', 'data', 'history', item.id)); });
+          await batch.commit();
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), {
+            type: 'System Purge', client: 'SYSTEM', tier: 'Reaper Protocol', amount: 0, timestamp: serverTimestamp(), targetId: 'BATCH'
+          });
+          setShowPurgeModal(false); showToast(`Berhasil memusnahkan ${toDelete.length} data expired! Sadis! 💀`);
+      } catch (e) { showToast("Gagal memusnahkan: " + e.message, "error"); } finally { setLoading(false); }
+  };
+
+  const handlePrintReport = () => { setPrintMode(true); setTimeout(() => { window.print(); setPrintMode(false); }, 500); };
+
+  const handleImportJSON = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.history || !Array.isArray(data.history)) throw new Error("Format JSON Salah");
+        setLoading(true);
+        await ensureAuth();
+        if (data.settings) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'settings'), data.settings, { merge: true });
+        const batch = writeBatch(db);
+        let count = 0;
+        data.history.forEach(item => {
+             if(count < 490) { 
+                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'history', item.id || Math.random().toString(36).substr(2,9));
+                 batch.set(docRef, item);
+                 count++;
+             }
+        });
+        await batch.commit();
+        showToast(`Restore Berhasil: ${count} Data`);
+      } catch (err) { showToast("Gagal Import: " + err.message, "error"); } finally { setLoading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
     };
-
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'tokens'), newToken);
-      await addAuditLog(`Created ${tierObj.name} token for ${memberInfo.name}`);
-      setLatestToken(newToken);
-      showStatus('success', 'Aktivasi Berhasil Disimpan!');
-      setMemberInfo({ name: '', phone: '', password: '' });
-    } catch (e) { showStatus('error', 'Koneksi Cloud Terputus!'); } 
-    finally { setLoading(false); }
+    reader.readAsText(file);
   };
 
-  const saveConfig = async () => {
-    if (!user || !db) return;
-    setIsSaving(true);
-    try {
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config'), config, { merge: true });
-      await addAuditLog(`Updated System Configuration`);
-      showStatus('success', 'Sistem Branding Sinkron!');
-    } catch (e) { showStatus('error', 'Gagal Update Cloud.'); } 
-    finally { setIsSaving(false); }
+  const exportToJSON = () => {
+    const backupData = { appName: APP_NAME, exportDate: new Date().toISOString(), history: history, logs: logs, settings: { apiKeys, revenueTarget, customTiers } };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `STB_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Backup JSON Berhasil!");
   };
 
-  const backupData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tokens));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `STB_BACKUP_${new Date().getTime()}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-    showStatus('success', 'Database Berhasil Dicadangkan!');
-  };
-
-  const copy = (txt) => {
-    const el = document.createElement('textarea'); el.value = txt; document.body.appendChild(el);
-    el.select(); document.execCommand('copy'); document.body.removeChild(el);
-    showStatus('success', 'Tersalin!');
-  };
-
-  const getFilteredTokens = () => {
-    return tokens.filter(t => {
-      const matches = t.memberName?.toLowerCase().includes(searchTerm.toLowerCase()) || t.memberPhone?.includes(searchTerm);
-      const expired = t.expiryDate < new Date();
-      if (filterStatus === 'active') return matches && !expired;
-      if (filterStatus === 'expired') return matches && expired;
-      return matches;
-    });
-  };
-
-  // UI RENDERING
-  if (!user || !isAdmin) {
-    return (
-      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 relative overflow-hidden font-sans">
-        <div className="absolute top-[-20%] left-[-20%] w-[70%] h-[70%] bg-indigo-600/10 blur-[150px] rounded-full"></div>
-        <div className="max-w-md w-full relative z-10 text-center text-white">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 w-24 h-24 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl">
-            <ShieldCheck size={52} />
-          </div>
-          <h1 className="text-4xl font-black mb-2 tracking-tighter uppercase italic">STB PRO V15</h1>
-          <p className="text-slate-400 text-[10px] mb-12 uppercase tracking-[0.4em] font-black italic decoration-indigo-500 underline underline-offset-4">Enterprise Security Handshake</p>
-          
-          {authError && (
-            <div className="mb-10 p-8 bg-red-500/10 border-2 border-red-500/30 rounded-[2rem] text-left animate-in zoom-in duration-300">
-               <div className="flex items-center gap-4 text-red-400 mb-4">
-                  <AlertCircle size={24} />
-                  <span className="font-black uppercase tracking-widest text-xs">{authError.title}</span>
-               </div>
-               <p className="text-xs text-slate-300 leading-relaxed font-bold italic mb-4 uppercase">{authError.message}</p>
-               <div className="p-4 bg-red-500/20 rounded-xl flex gap-3 items-start">
-                  <Info size={14} className="text-red-300 mt-0.5" />
-                  <p className="text-[10px] text-red-200 font-bold uppercase leading-relaxed">{authError.guide}</p>
-               </div>
-            </div>
-          )}
-
-          <button onClick={handleLogin} className="w-full py-6 px-6 bg-white rounded-3xl font-black text-slate-900 flex items-center justify-center gap-4 shadow-[0_20px_50px_-10px_rgba(255,255,255,0.2)] active:scale-95 transition-all">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-            <span>AUTHENTICATE AS ADMIN</span>
-          </button>
-          
-          {statusMsg.text && <p className="mt-8 text-red-400 text-[10px] font-black uppercase tracking-widest animate-pulse italic">{statusMsg.text}</p>}
-        </div>
-      </div>
-    );
-  }
+  if (isAuthLoading) return <LoadingScreen />;
+  if (!firebaseApp) return <ConfigNeededUI />;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex font-sans text-slate-900 overflow-hidden italic font-medium">
+    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 selection:bg-indigo-100 flex flex-col lg:flex-row overflow-hidden">
       
-      {/* SIDEBAR NAVIGATION */}
-      <aside className="w-72 bg-white border-r border-slate-200 hidden lg:flex flex-col sticky top-0 h-screen shadow-sm not-italic">
-        <div className="p-10">
-          <div className="flex items-center gap-3 mb-14">
-            <div className="bg-slate-900 p-3 rounded-2xl shadow-lg"><Briefcase size={24} className="text-indigo-500" /></div>
-            <span className="text-2xl font-black tracking-tighter uppercase italic">{config.businessName.split(' ')[0]}</span>
+      {printMode && (
+          <div className="fixed inset-0 z-[9999] bg-white p-8 overflow-auto animate-in fade-in">
+              <div className="max-w-5xl mx-auto border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
+                  <div>
+                      <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter mb-2">{APP_NAME}</h1>
+                      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Executive Summary Report</p>
+                  </div>
+                  <div className="text-right">
+                      <p className="text-xs font-bold text-slate-400 uppercase">Generated On</p>
+                      <p className="text-lg font-black text-slate-900">{new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
+                  </div>
+              </div>
+              <div className="grid grid-cols-4 gap-6 mb-12">
+                  <div className="p-6 bg-slate-50 border border-slate-200">
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Total Revenue</p>
+                      <p className="text-2xl font-black text-slate-900">{formatIDR(intelligence.revenue)}</p>
+                  </div>
+                  <div className="p-6 bg-slate-50 border border-slate-200">
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Active Units</p>
+                      <p className="text-2xl font-black text-slate-900">{history.filter(h => h.expiryTimestamp > Date.now()).length}</p>
+                  </div>
+                  <div className="p-6 bg-slate-50 border border-slate-200">
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Expired Units</p>
+                      <p className="text-2xl font-black text-red-600">{intelligence.expiredCount}</p>
+                  </div>
+                  <div className="p-6 bg-slate-50 border border-slate-200">
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Total Clients</p>
+                      <p className="text-2xl font-black text-slate-900">{intelligence.clientStats ? Object.keys(intelligence.clientStats).length : 0}</p>
+                  </div>
+              </div>
+              <table className="w-full text-left border-collapse">
+                  <thead>
+                      <tr className="border-b-2 border-slate-900">
+                          <th className="py-3 text-xs font-black uppercase text-slate-900">Client Name</th>
+                          <th className="py-3 text-xs font-black uppercase text-slate-900">Tier / Package</th>
+                          <th className="py-3 text-xs font-black uppercase text-slate-900">Unit ID</th>
+                          <th className="py-3 text-xs font-black uppercase text-slate-900">Status</th>
+                          <th className="py-3 text-xs font-black uppercase text-slate-900 text-right">Expiration</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {[...history].sort((a, b) => a.client.localeCompare(b.client)).map((item, idx) => {
+                          const isExpired = Date.now() > (item.expiryTimestamp || 0);
+                          return (
+                              <tr key={item.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-slate-50/50' : ''}`}>
+                                  <td className="py-3 text-xs font-bold text-slate-700">{item.client}</td>
+                                  <td className="py-3 text-xs font-medium text-slate-500">{item.tier}</td>
+                                  <td className="py-3 text-xs font-mono text-slate-500">{item.name}</td>
+                                  <td className="py-3"><span className={`text-[10px] px-2 py-1 rounded font-black uppercase ${isExpired ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>{isExpired ? 'EXPIRED' : 'ACTIVE'}</span></td>
+                                  <td className="py-3 text-xs font-bold text-slate-700 text-right">{item.expiryText}</td>
+                              </tr>
+                          )
+                      })}
+                  </tbody>
+              </table>
+              <div className="mt-12 pt-6 border-t border-slate-200 text-center">
+                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">End of Report • {APP_NAME} System</p>
+              </div>
           </div>
-          <nav className="space-y-4">
-            {[
-              { id: 'dashboard', label: 'Intelligence', icon: LayoutDashboard },
-              { id: 'generator', label: 'Provisioning', icon: Zap },
-              { id: 'members', label: 'Member Center', icon: Users },
-              { id: 'audit', label: 'Audit Trail', icon: Terminal },
-              { id: 'settings', label: 'Enterprise Hub', icon: Settings },
-            ].map((item) => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-5 px-6 py-4 rounded-2xl text-sm font-black transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>
-                <item.icon size={22} /> {item.label}
-              </button>
-            ))}
-          </nav>
+      )}
+
+      <aside className={`hidden lg:flex lg:w-72 flex-col bg-white border-r border-slate-100 px-6 py-10 z-50 shadow-sm relative ${printMode ? 'hidden' : ''}`}>
+        <div className="flex items-center gap-4 mb-14 px-2 cursor-pointer group" onClick={() => setActiveTab('dashboard')}>
+            <div className="bg-slate-950 p-3 rounded-2xl shadow-xl group-hover:bg-indigo-600 transition-colors duration-500"><Layers className="w-6 h-6 text-white" /></div>
+            <div><h1 className="font-black text-xl tracking-tighter leading-none text-slate-800 uppercase">STB</h1><p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">PRO SUITE</p></div>
         </div>
-        <div className="mt-auto p-8 border-t border-slate-100 flex items-center gap-4">
-          <img src={user?.photoURL} className="w-10 h-10 rounded-full border-2 border-indigo-50" />
-          <div className="overflow-hidden">
-            <p className="text-[10px] font-black truncate uppercase">{user?.displayName}</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span className="text-[8px] font-black uppercase text-slate-400 italic tracking-widest">Master Admin</span>
+        <nav className="flex-1 space-y-2">
+          <SideLink icon={LayoutDashboard} label="Dashboard Hub" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+          <SideLink icon={PlusCircle} label="Aktivasi Baru" active={activeTab === 'generator'} onClick={() => setActiveTab('generator')} />
+          <SideLink icon={Database} label="Data Database" active={activeTab === 'history'} onClick={() => setActiveTab('history')} />
+          <SideLink icon={UserCog} label="CRM Klien" active={activeTab === 'crm'} onClick={() => setActiveTab('crm')} />
+          <SideLink icon={Settings} label="Pengaturan Pro" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+        </nav>
+        <div className="mt-auto">
+            <div className="bg-indigo-50 p-6 rounded-[2.5rem] border border-indigo-100 mb-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10"><Target className="w-12 h-12" /></div>
+                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-3 text-center">Revenue Target</p>
+                <div className="h-2 bg-indigo-200/50 rounded-full overflow-hidden mb-3">
+                    <div className="h-full bg-indigo-600 transition-all duration-1000 shadow-[0_0_10px_rgba(79,70,229,0.5)]" style={{ width: `${Math.min((intelligence.revenue / revenueTarget) * 100, 100)}%` }} />
+                </div>
+                <div className="flex justify-between px-1"><span className="text-xl font-black text-slate-900">{(intelligence.revenue / revenueTarget * 100).toFixed(0)}%</span><span className="text-[9px] font-bold text-slate-400 mt-1.5">ACHIEVED</span></div>
             </div>
-          </div>
+            <div className={`text-[9px] font-black uppercase text-center tracking-widest flex items-center justify-center gap-2 ${dbStatus === 'connected' ? 'text-emerald-500' : 'text-red-500 animate-pulse'}`}>
+                {dbStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />} {dbStatus === 'connected' ? 'SYSTEM ONLINE' : 'DISCONNECTED'}
+            </div>
         </div>
       </aside>
 
-      {/* MAIN VIEWPORT */}
-      <main className="flex-1 p-4 lg:p-12 overflow-y-auto">
-        <div className="max-w-7xl mx-auto space-y-12 animate-in fade-in duration-700">
-          
-          {/* TAB 1: INTELLIGENCE DASHBOARD */}
+      <main className={`flex-1 overflow-y-auto custom-scrollbar h-screen bg-slate-50/50 relative ${printMode ? 'hidden' : ''}`}>
+        <header className="lg:hidden flex justify-between items-center bg-white/80 backdrop-blur-md p-5 sticky top-0 z-[40] border-b border-slate-100">
+             <div className="flex items-center gap-3"><div className="bg-slate-950 p-2 rounded-xl"><Layers className="w-5 h-5 text-white" /></div><h1 className="font-black text-lg tracking-tighter uppercase">STB PRO</h1></div>
+             <button onClick={() => setActiveTab('settings')} className="p-2.5 bg-slate-50 rounded-xl hover:bg-slate-100"><Settings className="w-5 h-5 text-slate-400" /></button>
+        </header>
+
+        <div className="p-6 lg:p-12 max-w-7xl mx-auto pb-32 lg:pb-12">
           {activeTab === 'dashboard' && (
-             <div className="space-y-12">
-                <header className="flex justify-between items-end">
-                   <div>
-                      <h1 className="text-3xl font-black uppercase italic underline decoration-indigo-500 underline-offset-8 uppercase">{config.businessName}</h1>
-                      <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-4 italic">v15 Intelligence Overview</p>
-                   </div>
-                   <button onClick={backupData} className="p-4 bg-white border border-slate-200 rounded-2xl hover:bg-indigo-50 text-indigo-600 transition-all shadow-sm flex items-center gap-3 text-[10px] font-black uppercase italic tracking-widest">
-                      <HardDrive size={18}/> Local Backup
-                   </button>
-                </header>
-
-                {stats.expiringSoon.length > 0 && (
-                   <div className="bg-rose-50 border-2 border-rose-200 p-8 rounded-[3rem] flex items-center gap-8 animate-in slide-in-from-top-6">
-                      <div className="p-5 bg-rose-500 text-white rounded-3xl shadow-xl shadow-rose-200"><Bell size={32} className="animate-bounce" /></div>
-                      <div className="flex-1">
-                         <h3 className="text-lg font-black uppercase italic text-rose-900 tracking-tighter leading-none">Smart Attention: Retention Alert</h3>
-                         <p className="text-xs text-rose-700 font-bold uppercase mt-1 italic italic tracking-widest leading-relaxed">Ada {stats.expiringSoon.length} member akan segera kedaluwarsa. Optimalkan pendapatan Anda sekarang.</p>
-                      </div>
-                      <button onClick={()=>setActiveTab('members')} className="px-10 py-5 bg-rose-900 text-white text-[11px] font-black uppercase rounded-2xl shadow-xl hover:scale-105 transition-all italic tracking-[0.2em]">Contact Members</button>
-                   </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                   {[
-                      { label: 'Net Revenue', val: `Rp ${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'indigo' },
-                      { label: 'Monthly Growth', val: `${stats.growth.toFixed(1)}%`, icon: TrendingUp, color: 'emerald' },
-                      { label: 'Active Users', val: stats.active, icon: UserCheck, color: 'blue' },
-                      { label: 'Total Matrix', val: stats.total, icon: DatabaseZap, color: 'slate' },
-                   ].map((s, i) => (
-                      <div key={i} className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm flex items-center gap-6 group hover:shadow-lg transition-all border-b-8 hover:border-b-indigo-500">
-                         <div className={`p-5 rounded-3xl bg-${s.color}-50 text-${s.color}-600 group-hover:rotate-12 transition-transform shadow-inner`}><s.icon size={28} /></div>
-                         <div><p className="text-[10px] font-black text-slate-400 uppercase mb-1 italic tracking-widest">{s.label}</p><p className="text-2xl font-black tracking-tighter italic">{s.val}</p></div>
-                      </div>
-                   ))}
+            <div className="space-y-10 animate-in fade-in duration-700 slide-in-from-bottom-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                    <StatBlock label="Total Units" value={history.length} icon={HardDrive} color="text-blue-600" bg="bg-blue-50" />
+                    <StatBlock label="Active Clients" value={history.filter(h => h.expiryTimestamp > Date.now()).length} icon={Shield} color="text-emerald-600" bg="bg-emerald-50" />
+                    <StatBlock label="Soon Expired" value={history.filter(h => (h.expiryTimestamp - Date.now()) / (1000*60*60*24) <= apiKeys.warningDays && h.expiryTimestamp > Date.now()).length} icon={Bell} color="text-orange-600" bg="bg-orange-50" />
+                    <StatBlock label="Total Revenue" value={formatIDR(intelligence.revenue)} icon={Wallet} color="text-indigo-600" bg="bg-indigo-50" />
+                </div>
+                <div className="bg-white rounded-[3.5rem] p-8 lg:p-12 border border-slate-100 shadow-sm relative overflow-hidden group">
+                    <div className="flex justify-between items-start mb-8 relative z-10">
+                        <div><h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-3 text-slate-400 mb-2"><BarChart3 className="w-5 h-5 text-indigo-600" /> Analytics Command</h3><h2 className="text-3xl lg:text-4xl font-black text-slate-900 tracking-tighter">Income Trend</h2></div>
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest ${intelligence.trendPercentage >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            {intelligence.trendPercentage >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />} {Math.abs(intelligence.trendPercentage).toFixed(1)}% vs Last Month
+                        </div>
+                    </div>
+                    <div className="h-64 w-full relative z-10">
+                        {intelligence.chartData.length > 0 ? (
+                            <div className="w-full h-full flex items-end justify-between gap-2">
+                                {intelligence.chartData.map((data, idx) => {
+                                    const maxVal = Math.max(...intelligence.chartData.map(d => d.value), 1);
+                                    const height = (data.value / maxVal) * 100;
+                                    return (
+                                        <div key={idx} className="flex-1 flex flex-col items-center gap-3 group/bar">
+                                            <div className="w-full bg-slate-50 rounded-t-2xl relative flex items-end overflow-hidden h-full group-hover/bar:bg-slate-100 transition-colors">
+                                                <div className="w-full bg-indigo-600 rounded-t-2xl transition-all duration-1000 ease-out relative group-hover/bar:bg-indigo-500" style={{ height: `${height}%` }}>
+                                                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[9px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-opacity whitespace-nowrap z-20">{formatIDR(data.value)}</div>
+                                                </div>
+                                            </div>
+                                            <span className="text-[9px] font-black text-slate-400 uppercase">{data.name}</span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : <div className="h-full flex items-center justify-center text-slate-300 font-bold text-xs uppercase tracking-widest bg-slate-50 rounded-3xl border border-dashed border-slate-200">No Enough Data for Analytics</div>}
+                    </div>
                 </div>
                 
-                <div className="bg-white p-12 rounded-[4rem] border border-slate-200 shadow-sm">
-                   <h2 className="text-xs font-black uppercase tracking-[0.5em] mb-12 text-slate-400 flex items-center gap-4 italic"><PieChart size={20}/> Revenue Stream Performance</h2>
-                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-                      {TIER_META.map(tier => {
-                         const count = tokens.filter(t => t.tier === tier.name).length;
-                         const percent = (count / (tokens.length || 1)) * 100;
-                         return (
-                            <div key={tier.id} className="flex flex-col items-center">
-                               <div className={`w-24 h-24 rounded-[2.5rem] bg-slate-50 flex items-center justify-center mb-6 shadow-inner group cursor-default relative overflow-hidden`}>
-                                  <div className={`absolute bottom-0 left-0 w-full bg-gradient-to-t ${tier.color} opacity-20`} style={{height: `${percent}%`}}></div>
-                                  <tier.icon className={`${tier.textColor} group-hover:scale-125 transition-transform relative z-10`} size={40} />
-                               </div>
-                               <span className="text-[10px] font-black uppercase tracking-[0.3em]">{tier.name} Tier</span>
-                               <span className="text-2xl font-black italic mt-1">{count}</span>
-                               <span className="text-[9px] text-slate-400 font-bold uppercase mt-1 italic tracking-widest">{percent.toFixed(1)}% Share</span>
+                {/* --- RECENT ACTIVITY FULL WIDTH --- */}
+                <section className="bg-white p-8 lg:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm relative mt-10">
+                     <div className="flex justify-between items-center mb-8 px-2"><h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-4 text-slate-400"><Receipt className="w-5 h-5 text-indigo-600" /> Recent Activity</h3></div>
+                    <div className="space-y-3">
+                        {logs.length === 0 ? <div className="py-20 text-center text-slate-200 font-black uppercase text-[10px] tracking-widest">No logs detected</div> : logs.map(log => (
+                            <div key={log.id} className="flex items-center justify-between p-5 bg-slate-50/50 rounded-[2rem] border border-slate-100/50 hover:bg-white hover:shadow-md transition-all group">
+                                <div className="flex items-center gap-5">
+                                    <div className={`p-3 rounded-2xl transition-colors ${log.type.includes('Purge') ? 'bg-red-100 text-red-600' : log.type.includes('Baru') ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                                        {log.type.includes('Purge') ? <Skull className="w-5 h-5" /> : log.type.includes('Baru') ? <PlusCircle className="w-5 h-5" /> : <RotateCcw className="w-5 h-5" />}
+                                    </div>
+                                    <div><p className="text-sm font-black text-slate-800 uppercase leading-none mb-1.5">{log.client}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{log.type} • {log.tier}</p></div>
+                                </div>
+                                <div className="text-right"><p className="text-sm font-black text-indigo-600 mb-1">{formatIDR(log.amount)}</p><p className="text-[9px] font-bold text-slate-300 uppercase">{log.timestamp?.seconds ? new Date(log.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Recent'}</p></div>
                             </div>
-                         );
-                      })}
-                   </div>
-                </div>
-             </div>
+                        ))}
+                    </div>
+                </section>
+            </div>
           )}
 
-          {/* TAB 2: PROVISIONING (v15) */}
           {activeTab === 'generator' && (
-             <div className="animate-in fade-in duration-700 space-y-12">
-                <header className="text-center italic"><h1 className="text-4xl font-black uppercase tracking-tighter decoration-indigo-500 underline underline-offset-8 decoration-4 italic">Provisioning Hub</h1></header>
-                <div className="grid grid-cols-1 xl:grid-cols-5 gap-12">
-                   <div className="xl:col-span-3 space-y-10">
-                      <div className="bg-white rounded-[4.5rem] p-12 border border-slate-200 shadow-sm relative overflow-hidden">
-                         <div className="absolute top-0 right-0 p-10 opacity-5"><PlusCircle size={200}/></div>
-                         {isAccumulating && (
-                            <div className="mb-10 bg-indigo-50 border-2 border-indigo-200 p-8 rounded-[2.5rem] flex items-center gap-6 animate-pulse shadow-sm">
-                              <div className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl"><History size={24} /></div>
-                              <div>
-                                 <span className="block text-xs font-black text-indigo-600 uppercase tracking-widest italic leading-none mb-1">Cumulative Active</span>
-                                 <span className="text-[10px] text-slate-500 font-bold uppercase italic leading-relaxed block tracking-tighter">Sisa masa aktif hingga {existingExpiry?.toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}.</span>
-                              </div>
+            <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-8 duration-700">
+                <section className="bg-white rounded-[3.5rem] p-8 lg:p-16 shadow-2xl shadow-slate-200 border border-slate-100 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+                    <div className="mb-12 text-center"><h2 className="text-4xl lg:text-5xl font-black text-slate-900 tracking-tighter uppercase mb-4 leading-none">Activation Core</h2><p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.4em]">Secure Generation Protocol</p></div>
+                    <div className="grid md:grid-cols-2 gap-8 lg:gap-12 mb-12">
+                        <div className="space-y-8">
+                            <FormGroup label="WhatsApp ID" icon={Smartphone}>
+                                <div className="relative">
+                                    <input type="text" placeholder="e.g. 08123..." value={clientWA} onChange={(e) => setClientWA(e.target.value)} className={`form-input-apex ${duplicateWarning ? 'border-orange-200 bg-orange-50/20' : ''}`} />
+                                    {clientWA && <button onClick={() => {setClientWA(''); setClientName(''); setDuplicateWarning(null); setExistingMember(null);}} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
+                                </div>
+                                {duplicateWarning && <div className="mt-4 p-4 bg-orange-50 border border-orange-100 rounded-[1.5rem] text-[10px] font-black text-orange-600 uppercase flex items-center gap-3 animate-pulse"><Info className="w-4 h-4" /> {duplicateWarning}</div>}
+                            </FormGroup>
+                            <FormGroup label="Client Name" icon={Users}>
+                                <input type="text" placeholder="Client Name" value={clientName} onChange={(e) => setClientName(e.target.value)} list="client-suggestions" className="form-input-apex" autoComplete="off" />
+                                <datalist id="client-suggestions">{clientSuggestions.map((name, idx) => (<option key={idx} value={name} />))}</datalist>
+                            </FormGroup>
+                        </div>
+                        <FormGroup label="System Notes" icon={FileText}><textarea rows="7" placeholder="ID Unit, Location, etc..." value={clientNotes} onChange={(e) => setClientNotes(e.target.value)} className="form-input-apex resize-none shadow-inner" /></FormGroup>
+                    </div>
+                    <div className="mb-12">
+                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center block mb-8">Select Tier Protocol</label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6">
+                            {Object.entries(customTiers).map(([name, info]) => {
+                                const IconComp = iconMap[info.icon] || Award;
+                                const isHot = intelligence.hotTier === name;
+                                return (
+                                    <button key={name} onClick={() => setSelectedTier(name)} className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-4 relative overflow-hidden group ${selectedTier === name ? `${info.color} scale-105 shadow-xl ring-4 ring-indigo-50` : 'bg-slate-50 border-slate-50 text-slate-400 hover:border-slate-200 hover:bg-white'}`}>
+                                        {isHot && <div className="absolute top-4 right-4"><Flame className="w-3 h-3 text-orange-500 fill-orange-500 animate-pulse" /></div>}
+                                        <IconComp className={`w-8 h-8 ${selectedTier === name ? 'text-indigo-600' : 'text-slate-300 group-hover:text-slate-400'} transition-colors`} />
+                                        <div className="text-center"><span className="font-black text-[10px] uppercase tracking-widest block mb-1">{name}</span><span className="text-[9px] font-bold opacity-60">{formatIDR(info.price)}</span></div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    {existingMember ? (
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <button onClick={handleSmartRenewFromGenerator} disabled={loading} className="w-full bg-emerald-600 text-white py-8 rounded-[2.5rem] font-black text-sm tracking-widest flex items-center justify-center gap-4 hover:bg-emerald-700 transition-all active:scale-95 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed">{loading ? <RefreshCw className="w-6 h-6 animate-spin" /> : <>PERPANJANG (AKUMULASI) <RotateCcw className="w-6 h-6" /></>}</button>
+                            <button onClick={handleGenerate} disabled={loading} className="w-full bg-slate-900 text-white py-8 rounded-[2.5rem] font-black text-sm tracking-widest flex items-center justify-center gap-4 hover:bg-slate-800 transition-all active:scale-95 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed">{loading ? <RefreshCw className="w-6 h-6 animate-spin" /> : <>BUAT UNIT BARU <PlusCircle className="w-6 h-6" /></>}</button>
+                        </div>
+                    ) : (
+                        <button onClick={handleGenerate} disabled={loading} className="w-full bg-slate-950 text-white py-8 rounded-[2.5rem] font-black text-sm tracking-widest flex items-center justify-center gap-4 hover:bg-indigo-600 transition-all active:scale-95 shadow-xl disabled:opacity-70 disabled:cursor-not-allowed">{loading ? <RefreshCw className="w-6 h-6 animate-spin" /> : <>PROCEED GENERATION <ArrowRight className="w-6 h-6" /></>}</button>
+                    )}
+                    {generatedData && (
+                        <div className="mt-16 p-10 bg-indigo-600 text-white rounded-[3rem] animate-in zoom-in slide-in-from-bottom-4 shadow-2xl border-4 border-indigo-500/50">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 relative z-10">
+                                <div><div className="bg-white/10 text-white border border-white/20 px-4 py-1.5 rounded-full text-[9px] font-black uppercase mb-4 shadow-lg flex items-center gap-2 w-fit"><UserCheck className="w-4 h-4" /> Protocol Ready</div><h4 className="text-4xl font-black uppercase tracking-tighter">{generatedData.client}</h4></div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => window.open(`https://wa.me/${generatedData.phone}`)} className="p-5 bg-white text-indigo-600 rounded-2xl shadow-xl hover:scale-110 transition-all"><MessageSquare className="w-6 h-6" /></button>
+                                    <button onClick={() => copyToClipboard(parseTemplate(apiKeys.waTemplate, generatedData))} className="p-5 bg-white text-slate-800 rounded-2xl shadow-xl hover:scale-110 transition-all border border-slate-100"><Copy className="w-6 h-6" /></button>
+                                </div>
                             </div>
-                         )}
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12 relative z-10">
-                            <div className="space-y-4">
-                               <label className="text-[11px] font-black uppercase text-slate-400 ml-8 tracking-widest italic leading-none">Identity Matrix</label>
-                               <input type="text" placeholder="Masukkan Nama" className="w-full p-7 bg-slate-50 border-2 border-transparent rounded-[2.5rem] text-sm font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner uppercase italic" value={memberInfo.name} onChange={(e) => handleNameInput(e.target.value)} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-white/10 pt-8 relative z-10">
+                                <div><p className="text-[10px] font-black text-indigo-200 uppercase mb-2 leading-none tracking-widest">Access Key ID</p><p className="font-mono text-xl font-black tracking-tight">{generatedData.name}</p></div>
+                                <div><p className="text-[10px] font-black text-indigo-200 uppercase mb-2 tracking-widest leading-none">Expired Date</p><p className="font-black text-xl tracking-tight">{generatedData.expiryText}</p></div>
                             </div>
-                            <div className="space-y-4">
-                               <label className="text-[11px] font-black uppercase text-slate-400 ml-8 tracking-widest italic leading-none">WhatsApp Link</label>
-                               <input type="text" placeholder="628xxxxxxxx" className="w-full p-7 bg-slate-50 border-2 border-transparent rounded-[2.5rem] text-sm font-mono font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner tracking-widest" value={memberInfo.phone} onChange={(e) => setMemberInfo({...memberInfo, phone: e.target.value.replace(/\D/g, '')})} />
-                            </div>
-                         </div>
-                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
-                            {TIER_META.map(tier => (
-                              <button key={tier.id} onClick={() => handleGenerate(tier)} className="group bg-slate-900 rounded-[3rem] border-4 border-transparent p-8 text-center text-white hover:border-indigo-500 transition-all active:scale-95 flex flex-col items-center">
-                                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${tier.color} flex items-center justify-center mb-6 shadow-xl group-hover:rotate-12 transition-transform`}><tier.icon size={32} /></div>
-                                <h3 className="text-[10px] font-black uppercase tracking-widest opacity-60 italic">{tier.name} Access</h3>
-                                <div className="text-[14px] font-black text-white mt-2 italic tracking-tighter">Rp {config.prices[tier.id].toLocaleString()}</div>
-                                <div className="mt-4 py-2 px-4 bg-white/10 rounded-xl text-[8px] uppercase font-black text-indigo-400 italic tracking-widest opacity-30 group-hover:opacity-100 transition-opacity">{tier.months} Months</div>
-                              </button>
-                            ))}
-                         </div>
-                      </div>
-                   </div>
-
-                   <div className="xl:col-span-2">
-                      <div className="bg-white rounded-[4rem] border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden relative">
-                         <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                            <h2 className="text-[11px] font-black uppercase tracking-widest italic flex items-center gap-3"><MessageSquare size={18} className="text-emerald-500"/> Blueprint Receipt</h2>
-                            <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
-                         </div>
-                         <div className="flex-1 p-10 bg-[#e5ddd5] relative">
-                            <div className="absolute inset-0 opacity-10 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')]"></div>
-                            <div className="relative z-10 bg-white p-8 rounded-[2rem] shadow-2xl border border-emerald-100 max-w-[95%] animate-in fade-in slide-in-from-left-12">
-                               <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800 leading-relaxed italic font-medium lowercase">
-                                  {latestToken ? 
-                                    (config.waTemplate.replace(/{{biz}}/g, config.businessName).replace(/{{name}}/g, latestToken.memberName).replace(/{{code}}/g, latestToken.code).replace(/{{duration}}/g, latestToken.duration).replace(/{{tier}}/g, latestToken.tier).replace(/{{expiry}}/g, latestToken.expiryDate.toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}))) 
-                                    : "Struk otomatis siap dikirim..."
-                                  }
-                               </pre>
-                               <div className="text-[10px] text-slate-400 mt-6 text-right flex items-center justify-end gap-1.5 font-bold tracking-tighter italic italic">System v15 Handshake ✓✓</div>
-                            </div>
-                         </div>
-                      </div>
-                   </div>
-                </div>
-             </div>
+                        </div>
+                    )}
+                </section>
+            </div>
           )}
 
-          {/* TAB 3: MEMBER CENTER */}
-          {activeTab === 'members' && (
-             <div className="bg-white rounded-[4.5rem] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500 italic font-medium">
-                <div className="p-14 bg-slate-50/50 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-center gap-12">
-                   <div className="flex items-center gap-8">
-                      <div className="p-6 bg-slate-900 text-indigo-400 rounded-[2rem] shadow-2xl"><Users size={40}/></div>
-                      <div>
-                         <h2 className="text-3xl font-black uppercase tracking-tighter italic underline decoration-indigo-200 decoration-4 underline-offset-8">Member Base Repository</h2>
-                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em] mt-3 italic tracking-widest">Global Instance Synchronized</p>
-                      </div>
-                   </div>
-                   <div className="flex flex-col md:flex-row gap-6 not-italic items-center w-full xl:w-auto">
-                      <div className="flex gap-2 p-2 bg-white border-2 border-slate-100 rounded-3xl shadow-md">
-                         {['all', 'active', 'expired'].map(m => (
-                           <button key={m} onClick={() => setFilterStatus(m)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all italic ${filterStatus === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>{m}</button>
-                         ))}
-                      </div>
-                      <div className="relative w-full md:w-[400px]">
-                         <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
-                         <input type="text" placeholder="Search Filter..." className="w-full pl-18 pr-8 py-6 bg-white border-2 border-slate-100 rounded-[2.25rem] text-sm font-black outline-none focus:border-indigo-500 transition-all shadow-lg italic tracking-tight italic" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                      </div>
-                   </div>
+          {activeTab === 'crm' && (
+            <div className="animate-in fade-in duration-700">
+                <div className="bg-white rounded-[3.5rem] p-8 lg:p-12 shadow-2xl border border-slate-100 relative">
+                    <div className="flex justify-between items-center mb-12">
+                        <div><h2 className="text-3xl font-black text-slate-950 uppercase tracking-tighter mb-2">CRM Intelligence</h2><p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.4em]">Customer Relationship Management</p></div>
+                        <button onClick={() => setShowCrmTemplateEditor(!showCrmTemplateEditor)} className="bg-indigo-50 text-indigo-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-sm hover:bg-indigo-100 transition-all flex items-center gap-2 border border-indigo-100"><Edit3 className="w-4 h-4" /> Edit Template</button>
+                    </div>
+                    {showCrmTemplateEditor && (
+                        <div className="mb-12 p-8 bg-slate-50 border border-indigo-100 rounded-[2.5rem] animate-in slide-in-from-top-4">
+                            <h4 className="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest flex items-center gap-2"><MessageSquare className="w-4 h-4 text-indigo-600" /> Follow-Up Message Template</h4>
+                            <textarea rows="6" value={apiKeys.crmTemplate} onChange={(e) => setApiKeys(p => ({ ...p, crmTemplate: e.target.value }))} className="form-input-apex text-xs font-mono leading-relaxed bg-white border-slate-200 focus:border-indigo-400 mb-4 shadow-inner" />
+                            <div className="flex justify-end"><button onClick={() => handleSaveSettings("CRM Template Saved!")} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2"><Save className="w-4 h-4" /> Save Template</button></div>
+                        </div>
+                    )}
+                    <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar-apex">
+                        {intelligence.crmProfiles.length === 0 ? <div className="text-center py-20 text-slate-300 font-black uppercase text-sm tracking-widest">No CRM data</div> :
+                        intelligence.crmProfiles.sort((a,b) => b.totalSpend - a.totalSpend).map((profile, idx) => (
+                            <div key={idx} className="p-6 bg-slate-50 hover:bg-white hover:shadow-xl rounded-[2.5rem] border border-transparent hover:border-indigo-100 transition-all flex flex-col md:flex-row items-center gap-6 group">
+                                <div className="w-12 h-12 rounded-2xl bg-slate-200 text-slate-500 font-black flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">{idx + 1}</div>
+                                <div className="flex-1 text-center md:text-left">
+                                    <h4 className="font-black text-lg uppercase text-slate-900">{profile.client}</h4>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest"><Wallet className="w-3 h-3 inline mr-1" /> Total: {formatIDR(profile.totalSpend)} • {profile.transactionCount}x Transaksi</p>
+                                </div>
+                                <button onClick={() => handleCRMFollowUp(profile)} className="bg-white text-indigo-600 border-2 border-indigo-50 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-sm hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all flex items-center gap-2"><Send className="w-3 h-3" /> Fonnte CRM</button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <div className="overflow-x-auto">
-                   <table className="w-full text-left text-sm">
-                      <thead className="bg-white text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] border-b border-slate-100">
-                         <tr><th className="px-16 py-10 uppercase italic">Member Identification</th><th className="px-10 py-10 text-center uppercase italic">Subscription Matrix</th><th className="px-10 py-10 uppercase italic">Tier Analytics</th><th className="px-16 py-10 text-right uppercase italic">Control Ops</th></tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                         {getFilteredTokens().map(t => {
-                            const isExpired = t.expiryDate < new Date();
-                            const progress = Math.max(0, Math.min(100, (t.expiryDate - new Date()) / (30 * 24 * 60 * 60 * 1000) * 100));
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div className="animate-in fade-in duration-700">
+                <div className="bg-white rounded-[3.5rem] p-8 lg:p-12 shadow-2xl border border-slate-100 relative">
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-8 mb-12">
+                        <div><h2 className="text-3xl font-black text-slate-950 uppercase tracking-tighter mb-2 leading-none">Database Hub</h2><p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.4em]">Integrated Database Management</p></div>
+                        <div className="flex flex-wrap gap-3 items-center justify-end">
+                            <button onClick={handlePrintReport} className="bg-slate-950 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-indigo-600 transition-all flex items-center gap-2"><Printer className="w-4 h-4" /> Report PDF</button>
+                            <button onClick={() => setShowPurgeModal(true)} className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-red-700 transition-all flex items-center gap-2 border border-red-500"><Skull className="w-4 h-4" /> Purge Expired</button>
+                            <select value={tierFilter} onChange={(e)=>setTierFilter(e.target.value)} className="bg-slate-50 px-5 py-3 rounded-2xl text-[10px] font-black uppercase outline-none border border-slate-100 focus:border-indigo-300 transition-colors cursor-pointer"><option value="all">All Tiers</option>{Object.keys(customTiers).map(tier => <option key={tier} value={tier}>{tier}</option>)}</select>
+                            <select value={sortConfig} onChange={(e)=>setSortConfig(e.target.value)} className="bg-slate-50 px-5 py-3 rounded-2xl text-[10px] font-black uppercase outline-none border border-slate-100 focus:border-indigo-300 transition-colors cursor-pointer"><option value="newest">Terbaru</option><option value="expiry">Sisa Hari</option><option value="name">Nama Klien</option></select>
+                            <button onClick={() => fileInputRef.current.click()} className="bg-slate-50 text-slate-600 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-sm hover:bg-slate-100 transition-all flex items-center gap-2"><Upload className="w-4 h-4" /> Import</button>
+                            <input type="file" ref={fileInputRef} onChange={handleImportJSON} className="hidden" accept=".json" />
+                            <button onClick={exportToJSON} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2"><FileCode className="w-4 h-4" /> Export</button>
+                        </div>
+                    </div>
+                    <div className="relative mb-10 group">
+                        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5 group-focus-within:text-indigo-500 transition-colors" />
+                        <input type="text" placeholder="Search client identity, unit ID, or notes..." className="w-full pl-16 pr-8 py-5 bg-slate-50 rounded-[2rem] outline-none font-bold focus:bg-white border-2 border-transparent focus:border-indigo-100 transition-all text-sm shadow-inner text-slate-700" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    </div>
+                    <div className="space-y-5 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar-apex">
+                        {filteredHistory.map(item => {
+                            const isExpired = Date.now() > (item.expiryTimestamp || 0);
+                            const ltvValue = intelligence.clientLTV[item.client] || 0;
+                            const TierIcon = iconMap[customTiers[item.tier]?.icon] || Shield;
                             return (
-                               <tr key={t.id} className="group hover:bg-slate-50/70 transition-all italic">
-                                  <td className="px-16 py-12">
-                                     <div className="flex flex-col gap-2">
-                                        <span className="font-black text-slate-900 text-xl uppercase tracking-tighter underline decoration-slate-100 decoration-4 group-hover:decoration-indigo-100 transition-all italic underline-offset-8">{t.memberName}</span>
-                                        <div className="flex items-center gap-3 text-slate-400">
-                                           <Smartphone size={14}/>
-                                           <span className="text-[10px] font-mono font-black tracking-[0.2em]">{t.memberPhone}</span>
+                                <div key={item.id} className="p-8 bg-slate-50/50 hover:bg-white hover:shadow-xl rounded-[3rem] border-2 border-transparent hover:border-indigo-100 transition-all flex flex-col xl:flex-row items-center gap-8 group relative">
+                                    <div className={`p-6 rounded-[2rem] ${customTiers[item.tier]?.accent || 'bg-slate-400'} text-white shadow-lg group-hover:scale-110 transition-transform duration-300`}><TierIcon className="w-8 h-8" /></div>
+                                    <div className="flex-1 min-w-0 text-center xl:text-left w-full">
+                                        <div className="flex flex-wrap items-center justify-center xl:justify-start gap-3 mb-3">
+                                            <h4 className="font-black text-xl uppercase truncate text-slate-900 tracking-tight leading-none">{item.client}</h4>
+                                            <span className={`text-[9px] px-3 py-1 rounded-full font-black uppercase tracking-widest border ${isExpired ? 'bg-red-50 text-red-500 border-red-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{isExpired ? 'INACTIVE' : 'READY'}</span>
                                         </div>
-                                     </div>
-                                  </td>
-                                  <td className="px-10 py-12">
-                                     <div className="w-[200px] mx-auto space-y-4">
-                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest italic leading-none">
-                                           <span className={isExpired ? 'text-red-500' : 'text-emerald-500'}>{isExpired ? 'TERMINATED' : 'PROVISIONED'}</span>
-                                           <span>{t.expiryDate.toLocaleDateString('id-ID')}</span>
+                                        <div className="flex flex-wrap justify-center xl:justify-start gap-x-8 gap-y-4 mt-4 px-2">
+                                            <div className="flex items-center gap-3"><Target className="w-5 h-5 text-slate-300" /><div className="flex flex-col text-left"><span className="text-xs font-black text-slate-900 leading-none">{item.tier}</span><span className="text-[9px] font-bold text-slate-400 uppercase mt-1">{item.name}</span></div></div>
+                                            <div className="flex items-center gap-3"><Wallet className="w-5 h-5 text-indigo-300" /><div className="flex flex-col text-left"><span className="text-xs font-black text-indigo-600 leading-none">{formatIDR(ltvValue)}</span><span className="text-[9px] font-bold text-slate-400 uppercase mt-1">LIFETIME VALUE</span></div></div>
                                         </div>
-                                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200/50">
-                                           <div className={`h-full transition-all duration-1000 ${isExpired ? 'bg-red-300' : progress > 50 ? 'bg-emerald-500' : progress > 20 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: isExpired ? '100%' : `${progress}%` }}></div>
-                                        </div>
-                                     </div>
-                                  </td>
-                                  <td className="px-10 py-12">
-                                     <div className="flex flex-col gap-1.5">
-                                        <span className="font-black text-indigo-600 text-[11px] uppercase tracking-widest italic">{t.tier} Tier</span>
-                                        <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-tighter">Value: Rp {t.price?.toLocaleString()}</span>
-                                     </div>
-                                  </td>
-                                  <td className="px-16 py-12 text-right">
-                                     <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                                        <button onClick={() => { setActiveTab('generator'); setMemberInfo({ name: t.memberName, phone: t.memberPhone, password: t.password }); }} className="p-4 bg-white text-emerald-600 rounded-[1.5rem] border-2 shadow-sm hover:bg-emerald-600 hover:text-white transition-all"><ArrowUpRight size={22}/></button>
-                                        <button onClick={() => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tokens', t.id))} className="p-4 bg-white text-red-300 hover:text-red-600 rounded-[1.5rem] border-2 shadow-sm transition-all"><Trash2 size={22}/></button>
-                                     </div>
-                                  </td>
-                               </tr>
+                                    </div>
+                                    <div className="flex gap-3 w-full xl:w-auto justify-center">
+                                        <ActionBtn icon={SendHorizontal} color="bg-indigo-50 text-indigo-600 border-indigo-100" onClick={() => handleDatabaseMessage(item)} />
+                                        <ActionBtn icon={Copy} color="bg-white text-slate-600 border-slate-200" onClick={() => copyToClipboard(parseTemplate(apiKeys.waTemplate, item))} />
+                                        <ActionBtn icon={RotateCcw} color="bg-emerald-50 text-emerald-600 border-emerald-100" onClick={() => handleRenew(item)} />
+                                        <ActionBtn icon={Settings} color="bg-slate-100 text-slate-600 border-slate-200" onClick={() => setEditingItem(item)} />
+                                        <ActionBtn icon={Trash2} color="bg-red-50 text-red-600 border-red-100" onClick={() => setShowDeleteModal(item.id)} />
+                                    </div>
+                                </div>
                             );
-                         })}
-                      </tbody>
-                   </table>
+                        })}
+                    </div>
                 </div>
-             </div>
+            </div>
           )}
 
-          {/* TAB 4: AUDIT TRAIL */}
-          {activeTab === 'audit' && (
-             <div className="bg-white rounded-[4rem] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500 italic">
-                <div className="p-14 bg-slate-50/50 border-b border-slate-100">
-                   <h2 className="text-3xl font-black uppercase tracking-tighter underline decoration-indigo-500 decoration-8 underline-offset-8 italic">System Audit Trail</h2>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em] mt-6 italic">Tracking 20 latest administrative actions across all instances</p>
-                </div>
-                <div className="p-10 space-y-6">
-                   {logs.map(log => (
-                      <div key={log.id} className="flex items-center gap-8 p-8 bg-slate-50/50 rounded-[2.5rem] border border-slate-100 group hover:bg-white hover:shadow-lg transition-all">
-                         <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform"><Terminal size={28}/></div>
-                         <div className="flex-1">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic leading-none mb-3">{new Date(log.timestamp).toLocaleString('id-ID')}</p>
-                            <p className="text-lg font-black text-slate-800 uppercase tracking-tighter italic">{log.action}</p>
-                         </div>
-                         <div className="text-right">
-                            <span className="px-5 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl shadow-lg italic tracking-widest">Admin: {log.admin.split(' ')[0]}</span>
-                         </div>
-                      </div>
-                   ))}
-                </div>
-             </div>
-          )}
-
-          {/* TAB 5: ENTERPRISE HUB */}
           {activeTab === 'settings' && (
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 animate-in fade-in duration-500 pb-20 italic">
-                <div className="space-y-12">
-                   <div className="bg-white rounded-[4rem] p-12 border border-slate-200 shadow-sm relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-10 opacity-5"><Brush size={100}/></div>
-                      <div className="flex items-center justify-between mb-14">
-                         <div className="flex items-center gap-6">
-                            <div className="p-5 bg-indigo-50 text-indigo-600 rounded-[1.75rem] shadow-inner"><Brush size={28}/></div>
-                            <div><h2 className="text-2xl font-black uppercase tracking-tighter italic underline decoration-indigo-500 decoration-4">Branding Hub</h2><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">Enterprise Business Identity</p></div>
-                         </div>
-                         <button onClick={saveConfig} disabled={isSaving} className="p-5 bg-slate-900 text-white rounded-3xl hover:bg-emerald-600 transition-all shadow-xl active:scale-95">{isSaving ? <RefreshCw size={24} className="animate-spin" /> : <Save size={24} />}</button>
-                      </div>
-                      <div className="space-y-8 relative z-10">
-                         <div className="space-y-4">
-                            <label className="text-[11px] font-black text-slate-400 uppercase ml-8 tracking-[0.3em] italic">Business Identity Name</label>
-                            <input type="text" className="w-full p-7 bg-slate-50 border-2 border-transparent rounded-[2.5rem] text-sm font-black outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner italic" value={config.businessName} onChange={e => setConfig({...config, businessName: e.target.value.toUpperCase()})} />
-                         </div>
-                         <div className="grid grid-cols-2 gap-8">
-                            {TIER_META.map(tier => (
-                               <div key={tier.id} className="space-y-3">
-                                  <label className="text-[10px] font-black uppercase text-slate-400 ml-6 italic">{tier.name} Cost (Rp)</label>
-                                  <input type="number" className="w-full p-6 bg-slate-50 border-2 border-transparent rounded-[2.25rem] text-sm font-black outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner italic" value={config.prices[tier.id]} onChange={e => setConfig({...config, prices: {...config.prices, [tier.id]: parseInt(e.target.value) || 0}})} />
-                               </div>
-                            ))}
-                         </div>
-                      </div>
-                   </div>
-
-                   <div className="bg-white rounded-[4rem] p-12 border border-slate-200 shadow-sm relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-10 opacity-5"><Database size={100}/></div>
-                      <div className="flex items-center gap-8 mb-14">
-                         <div className="p-5 bg-indigo-50 text-indigo-600 rounded-[1.75rem] shadow-2xl"><DatabaseZap size={28}/></div>
-                         <div><h2 className="text-2xl font-black uppercase tracking-tighter italic">Global API Gateway</h2><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">Inter-System Handshake Protocol</p></div>
-                      </div>
-                      <div className="space-y-8">
-                         <div className="space-y-4"><label className="text-[10px] font-black text-slate-400 uppercase ml-8 italic">WhatsApp Handshake Token</label><input type="password" placeholder="FONNTE_TOKEN" className="w-full p-7 bg-slate-50 border-2 border-transparent rounded-[2.5rem] text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner tracking-widest italic" value={config.fonnteToken} onChange={e => setConfig({...config, fonnteToken: e.target.value})} /></div>
-                         <div className="space-y-4"><label className="text-[10px] font-black text-slate-400 uppercase ml-8 italic">Telegram Bot Matrix Token</label><input type="password" placeholder="BOT_TOKEN" className="w-full p-7 bg-slate-50 border-2 border-transparent rounded-[2.5rem] text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner tracking-widest italic" value={config.telegramToken} onChange={e => setConfig({...config, telegramToken: e.target.value})} /></div>
-                      </div>
-                   </div>
+            <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-8 duration-700 pb-24">
+                <div className="bg-white rounded-[3.5rem] p-8 lg:p-16 shadow-2xl border border-slate-100">
+                    <div className="flex justify-between items-center mb-12">
+                         <h3 className="text-3xl font-black flex items-center gap-4 uppercase tracking-tighter text-slate-800 leading-none"><TerminalSquare className="w-10 h-10 text-indigo-600" /> System Control</h3>
+                         <div className={`px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2 border ${isSettingsSynced ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>{isSettingsSynced ? <Cloud className="w-4 h-4" /> : <CloudOff className="w-4 h-4" />} {isSettingsSynced ? 'Synced Cloud' : 'Local Mode'}</div>
+                    </div>
+                    <div className="space-y-12">
+                        <section className="p-8 bg-slate-950 rounded-[2.5rem] text-white shadow-2xl relative">
+                            <div className="flex justify-between items-center mb-8">
+                                <h4 className="text-[10px] font-black uppercase text-indigo-400 tracking-[0.4em] flex items-center gap-3"><ListPlus className="w-4 h-4" /> Tier Configuration</h4>
+                                <button onClick={()=>handleSaveSettings("Tiers Config Updated!")} className="text-[9px] font-black uppercase tracking-widest bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full transition-colors flex items-center gap-2"><Save className="w-3 h-3" /> Save Tiers</button>
+                            </div>
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {Object.keys(customTiers).map(t => (
+                                    <div key={t} className="p-6 bg-white/5 rounded-[2rem] border border-white/10 space-y-4 hover:bg-white/10 transition-colors">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-black uppercase text-white tracking-tight">{t}</span>
+                                            <div className="flex gap-1">{['Award', 'Zap', 'Crown', 'Gem'].map(iconName => (<button key={iconName} onClick={() => setCustomTiers(p => ({...p, [t]: {...p[t], icon: iconName}}))} className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${customTiers[t].icon === iconName ? 'bg-indigo-600 shadow-md scale-110' : 'text-slate-600 hover:text-slate-300'}`}><span className="text-[8px] font-black">{iconName[0]}</span></button>))}</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1"><label className="text-[8px] font-black text-indigo-300 uppercase ml-2">Rate (Rp)</label><input type="number" value={customTiers[t].price} onChange={(e)=>setCustomTiers(p=>({...p, [t]: {...p[t], price: Number(e.target.value)}}))} className="w-full bg-slate-900 border border-white/20 rounded-xl px-4 py-2 font-bold text-xs text-white focus:border-indigo-500 outline-none" /></div>
+                                            <div className="space-y-1"><label className="text-[8px] font-black text-indigo-300 uppercase ml-2">Months</label><input type="number" value={customTiers[t].months} onChange={(e)=>setCustomTiers(p=>({...p, [t]: {...p[t], months: Number(e.target.value)}}))} className="w-full bg-slate-900 border border-white/20 rounded-xl px-4 py-2 font-bold text-xs text-white focus:border-indigo-500 outline-none" /></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                        <div className="flex justify-end"><button onClick={() => setShowSecrets(!showSecrets)} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 flex items-center gap-2">{showSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />} {showSecrets ? 'Hide Secrets' : 'Show Secrets'}</button></div>
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 shadow-inner relative group">
+                                <div className="flex justify-between items-center mb-6"><h4 className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-3"><Smartphone className="w-4 h-4 text-indigo-600" /> Fonnte Engine</h4><button onClick={()=>handleSaveSettings("Fonnte Token Saved!")} className="text-[9px] font-black uppercase tracking-widest bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm"><Save className="w-3 h-3" /> Quick Save</button></div>
+                                <input type={showSecrets ? "text" : "password"} value={apiKeys.fonnteToken} onChange={(e)=>setApiKeys(p=>({...p, fonnteToken: e.target.value}))} className="form-input-apex shadow-sm bg-white" placeholder="Paste Fonnte Token Here" />
+                            </div>
+                            <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 shadow-inner relative group">
+                                <div className="flex justify-between items-center mb-6"><h4 className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-3"><Navigation className="w-4 h-4 text-indigo-600" /> Telegram Bot</h4><button onClick={()=>handleSaveSettings("Telegram Config Saved!")} className="text-[9px] font-black uppercase tracking-widest bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 px-4 py-2 rounded-full transition-colors flex items-center gap-2 shadow-sm"><Save className="w-3 h-3" /> Quick Save</button></div>
+                                <div className="space-y-4">
+                                    <input type={showSecrets ? "text" : "password"} value={apiKeys.telegramToken} onChange={(e)=>setApiKeys(p=>({...p, telegramToken: e.target.value}))} className="form-input-apex shadow-sm bg-white" placeholder="Bot Token" />
+                                    <input type="text" value={apiKeys.telegramChatId} onChange={(e)=>setApiKeys(p=>({...p, telegramChatId: e.target.value}))} className="form-input-apex shadow-sm bg-white" placeholder="Chat ID" />
+                                </div>
+                            </div>
+                        </div>
+                        {/* --- NEW: TELEGRAM NOTIFICATION TEMPLATE --- */}
+                        <div className="p-8 bg-indigo-50/50 rounded-[2.5rem] border border-indigo-100 shadow-inner">
+                            <h4 className="text-[10px] font-black uppercase text-slate-400 mb-6 flex items-center gap-3"><Bot className="w-4 h-4 text-indigo-600" /> Telegram Notification Template</h4>
+                            <textarea rows="5" value={apiKeys.telegramTemplate} onChange={(e)=>setApiKeys(p=>({...p, telegramTemplate: e.target.value}))} className="form-input-apex text-xs font-mono leading-relaxed bg-white border-transparent focus:border-indigo-300" placeholder="Template pesan untuk bot telegram..." />
+                        </div>
+                        <div className="grid lg:grid-cols-2 gap-8">
+                             <div className="space-y-4"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> WA Activation Layout</label><textarea rows="8" value={apiKeys.waTemplate} onChange={(e)=>setApiKeys(p=>({...p, waTemplate: e.target.value}))} className="form-input-apex text-xs font-mono leading-relaxed bg-slate-50 border-transparent focus:bg-white" /></div>
+                             <div className="space-y-4"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 flex items-center gap-2"><BellRing className="w-4 h-4 text-indigo-600" /> WA Reminder Layout</label><textarea rows="8" value={apiKeys.reminderTemplate} onChange={(e)=>setApiKeys(p=>({...p, reminderTemplate: e.target.value}))} className="form-input-apex text-xs font-mono leading-relaxed bg-slate-50 border-transparent focus:bg-white" /></div>
+                        </div>
+                        <button onClick={() => handleSaveSettings("All System Settings Deployed!")} disabled={loading} className="w-full py-8 bg-slate-950 text-white rounded-[2.5rem] font-black uppercase text-xs tracking-[0.4em] hover:bg-indigo-600 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center justify-center gap-4">
+                            {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />} {loading ? "DEPLOYING..." : "DEPLOY & SAVE ALL SETTINGS"}
+                        </button>
+                    </div>
                 </div>
-
-                <div className="bg-white rounded-[4.5rem] p-12 border border-slate-200 shadow-sm flex flex-col h-full italic relative overflow-hidden">
-                   <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500"></div>
-                   <h2 className="text-3xl font-black mb-12 tracking-tighter uppercase underline decoration-indigo-500 decoration-8 underline-offset-8 italic">Omni-Channel Messaging Blueprint</h2>
-                   <div className="flex flex-wrap gap-3 mb-10 p-8 bg-slate-50 rounded-[3rem] border-2 border-slate-100 shadow-inner">
-                      {['biz', 'name', 'code', 'password', 'duration', 'tier', 'expiry'].map(tag => (
-                         <button key={tag} className="px-5 py-2.5 bg-white text-indigo-600 text-[10px] font-black rounded-2xl border-2 border-indigo-100 uppercase transition-all hover:bg-indigo-600 hover:text-white shadow-sm flex items-center gap-3 italic">
-                            <Zap size={12} /> {'{{' + tag + '}}'}
-                         </button>
-                      ))}
-                   </div>
-                   <textarea className="w-full flex-1 p-12 bg-slate-50 border-2 border-slate-50 rounded-[3.5rem] text-base font-bold outline-none focus:ring-8 focus:ring-indigo-50/50 mb-8 shadow-inner italic leading-relaxed lowercase tracking-tight" value={config.waTemplate} onChange={e => setConfig({...config, waTemplate: e.target.value})} />
-                   <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.5em] italic text-center leading-relaxed">System v15: Global Cloud Sync Active Across Multi-Admin Terminals</p>
-                </div>
-             </div>
+            </div>
           )}
         </div>
+
+        {/* --- TOAST & MOBILE NAV --- */}
+        {toast && (<div className={`fixed bottom-10 right-10 z-[100] px-8 py-5 rounded-2xl shadow-2xl font-black uppercase text-xs tracking-widest animate-in slide-in-from-right duration-300 flex items-center gap-4 ${toast.type === 'error' ? 'bg-red-500 text-white' : 'bg-slate-900 text-white'}`}>{toast.type === 'error' ? <Info className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5 text-emerald-400" />}{toast.msg}</div>)}
+        <nav className="lg:hidden fixed bottom-6 left-6 right-6 z-[90] bg-slate-900/95 backdrop-blur-xl rounded-[2.5rem] p-3 flex justify-around border border-white/10 shadow-2xl shadow-slate-900/50">
+            <MobileIcon icon={LayoutDashboard} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+            <MobileIcon icon={PlusCircle} active={activeTab === 'generator'} onClick={() => setActiveTab('generator')} />
+            <MobileIcon icon={Database} active={activeTab === 'history'} onClick={() => setActiveTab('history')} />
+            <MobileIcon icon={Settings} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+        </nav>
       </main>
 
-      {/* NOTIFICATION LAYER */}
-      <div className="fixed bottom-12 right-12 z-[999] pointer-events-none not-italic">
-        {statusMsg.text && (
-          <div className={`p-10 rounded-[4rem] shadow-[0_60px_100px_-20px_rgba(0,0,0,0.6)] flex items-center gap-10 animate-in slide-in-from-right-12 pointer-events-auto border-4 ${statusMsg.type === 'success' ? 'bg-[#0a0f1d] text-white border-indigo-500/40' : 'bg-red-600 text-white border-white/20'}`}>
-            <div className={`p-5 rounded-3xl ${statusMsg.type === 'success' ? 'bg-indigo-500/20 text-emerald-400 shadow-2xl' : 'bg-white/20'}`}><CheckCircle size={40} /></div>
-            <div>
-               <p className="text-2xl font-black uppercase tracking-[0.3em] italic leading-none">{statusMsg.text}</p>
-               <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-3 italic flex items-center gap-3 leading-none tracking-[0.2em]"><Activity size={16}/> {isAdmin ? 'ADMIN AUTHENTICATED' : 'SINKRONISASI CLOUD'}</p>
-            </div>
+      {/* --- MODALS --- */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[500] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-300">
+             <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><Trash2 className="text-red-500 w-10 h-10" /></div>
+             <h3 className="text-2xl font-black mb-3 uppercase tracking-tight text-slate-900">Destroy Data?</h3>
+             <p className="text-slate-400 text-xs mb-8 italic">Aksi ini permanen. Member akan dihapus dari database.</p>
+             <div className="flex gap-4">
+                <button onClick={() => setShowDeleteModal(null)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500 uppercase text-[10px] tracking-widest hover:bg-slate-200">Batal</button>
+                <button onClick={async () => {
+                   try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', showDeleteModal)); setShowDeleteModal(null); showToast("Data dimusnahkan!", "error"); } catch(e) { showToast("Gagal hapus", "error"); }
+                }} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-red-200 hover:bg-red-700">Hapus</button>
+             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+      
+      {showPurgeModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[500] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-12 max-w-md w-full text-center shadow-2xl animate-in zoom-in duration-300 border-4 border-red-100">
+             <div className="bg-red-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner animate-pulse"><Skull className="text-red-600 w-12 h-12" /></div>
+             <h3 className="text-3xl font-black mb-4 uppercase tracking-tighter text-slate-900 leading-none">THE REAPER PROTOCOL</h3>
+             <p className="text-slate-500 text-sm mb-4 font-bold">Apakah Anda yakin ingin memusnahkan semua data expired?</p>
+             <div className="bg-slate-50 p-4 rounded-2xl mb-8 border border-slate-100">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Eliminasi</p>
+                 <p className="text-4xl font-black text-red-600 mt-1">{intelligence.expiredCount} <span className="text-sm text-slate-400">USERS</span></p>
+             </div>
+             <div className="flex gap-4">
+                <button onClick={() => setShowPurgeModal(false)} className="flex-1 py-5 bg-slate-100 rounded-2xl font-black text-slate-600 uppercase text-xs tracking-widest hover:bg-slate-200 transition-colors">Batalkan</button>
+                <button onClick={handleBatchPurge} disabled={loading || intelligence.expiredCount === 0} className="flex-1 py-5 bg-red-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-200 hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Skull className="w-4 h-4" />} EXECUTE
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {editingItem && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[500] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
+             <h3 className="text-2xl font-black mb-8 uppercase tracking-tight text-slate-900 text-center">Edit Data</h3>
+             <div className="space-y-5 mb-8">
+                 <div className="space-y-2"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Nama Klien</label><input className="form-input-apex py-4" value={editingItem.client} onChange={(e) => setEditingItem({...editingItem, client: e.target.value})} /></div>
+                 <div className="space-y-2"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Nomor WhatsApp</label><input className="form-input-apex py-4" value={editingItem.phone} onChange={(e) => setEditingItem({...editingItem, phone: e.target.value})} /></div>
+                 <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Paket Layanan (Tier)</label>
+                    <select className="form-input-apex py-4 bg-white" value={editingItem.tier} onChange={(e) => setEditingItem({...editingItem, tier: e.target.value})}>{Object.keys(customTiers).map(t => <option key={t} value={t}>{t}</option>)}</select>
+                 </div>
+                 <div className="space-y-2"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-3">Catatan</label><textarea rows="3" className="form-input-apex py-4 resize-none" value={editingItem.notes} onChange={(e) => setEditingItem({...editingItem, notes: e.target.value})} /></div>
+             </div>
+             <div className="flex gap-4">
+                <button onClick={() => setEditingItem(null)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500 uppercase text-[10px] tracking-widest hover:bg-slate-200">Batal</button>
+                <button onClick={handleUpdate} className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-indigo-700">Simpan</button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .form-input-apex { width: 100%; padding: 1.5rem 2rem; background-color: #f8fafc; border: 2px solid transparent; border-radius: 2rem; font-weight: 700; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); outline: none; font-size: 0.95rem; }
+        .form-input-apex:focus { border-color: #818cf8; background-color: white; box-shadow: 0 10px 30px -10px rgba(99,102,241,0.2); transform: translateY(-2px); }
+        .custom-scrollbar-apex::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar-apex::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar-apex::-webkit-scrollbar-track { background: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        @media print { body { background: white; } .no-print { display: none !important; } }
+      `}</style>
     </div>
   );
 };
+
+// --- SUBCOMPONENTS ---
+const SideLink = ({ icon: Icon, label, active, onClick }) => (
+    <button onClick={onClick} className={`w-full flex items-center gap-5 px-8 py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-[0.2em] transition-all duration-300 ${active ? 'bg-slate-950 text-white shadow-xl translate-x-3 scale-105' : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50'}`}>
+        <Icon className={`w-5 h-5 ${active ? 'text-indigo-400' : 'text-current'}`} /> {label}
+    </button>
+);
+
+const MobileIcon = ({ icon: Icon, active, onClick }) => (
+    <button onClick={onClick} className={`p-4 rounded-2xl transition-all duration-300 ${active ? 'bg-white/10 text-indigo-400 scale-110 shadow-inner' : 'text-slate-500'}`}><Icon className="w-6 h-6" /></button>
+);
+
+const StatBlock = ({ label, value, icon: Icon, color, bg }) => (
+    <div className={`p-8 rounded-[3rem] bg-white border border-slate-100 shadow-sm group hover:-translate-y-1 transition-all duration-300`}>
+        <div className={`p-4 rounded-2xl w-fit mb-6 ${bg} ${color} shadow-md transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3`}><Icon className="w-6 h-6" /></div>
+        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.25em] mb-2 leading-none">{label}</p>
+        <p className="text-3xl font-black text-slate-900 tracking-tighter leading-none">{value}</p>
+    </div>
+);
+
+const FilterButton = ({ active, label, onClick, color }) => (
+    <button onClick={onClick} className={`px-8 py-4 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.15em] transition-all duration-300 whitespace-nowrap border ${active ? `${color} text-white border-transparent shadow-lg transform scale-105` : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>{label}</button>
+);
+
+const ActionBtn = ({ icon: Icon, color, onClick }) => (
+    <button onClick={onClick} className={`p-4 rounded-2xl ${color} border hover:scale-110 active:scale-95 transition-all shadow-sm group`}>
+        <Icon className="w-5 h-5 group-hover:rotate-6 transition-transform" />
+    </button>
+);
+
+const FormGroup = ({ label, icon: Icon, children }) => (
+    <div className="space-y-4">
+        <label className="text-[11px] font-black text-slate-950 uppercase flex items-center gap-3 ml-4 tracking-wider">
+            <Icon className="w-4 h-4 text-indigo-600" /> {label}
+        </label>
+        {children}
+    </div>
+);
+
+const LoadingScreen = () => (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-12 text-center">
+        <div className="relative mb-12">
+            <div className="w-20 h-20 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+            <Layers className="w-8 h-8 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+        </div>
+        <h2 className="text-xl font-black text-white uppercase tracking-tighter mb-2">System Initializing</h2>
+        <p className="text-[10px] font-black uppercase text-indigo-400 tracking-[0.4em] animate-pulse">Connecting to Core...</p>
+    </div>
+);
+
+const ConfigNeededUI = () => (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-slate-950 to-slate-950" />
+        <div className="max-w-md w-full bg-slate-900/50 border border-white/10 rounded-[3rem] p-12 backdrop-blur-2xl shadow-2xl relative z-10">
+            <div className="bg-red-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-8 border border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+                <LogOut className="text-red-500 w-10 h-10" />
+            </div>
+            <h1 className="text-3xl font-black text-white uppercase tracking-tighter mb-6 leading-none">CONFIG<br/>MISSING</h1>
+            <p className="text-slate-400 text-xs leading-relaxed mb-10 tracking-wide">Firebase credentials belum terdeteksi. Harap isi variabel <code className="text-indigo-400 font-mono bg-indigo-500/10 px-2 py-1 rounded">firebaseConfig</code> di dalam source code.</p>
+        </div>
+    </div>
+);
+
+function CheckCircle2(props) {
+  return (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+  );
+}
 
 export default App;
