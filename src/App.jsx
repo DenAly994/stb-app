@@ -25,7 +25,7 @@ import {
 
 // --- CONFIGURATION: MASUKKAN DATA FIREBASE DI SINI ---
 const firebaseConfig = {
-  apiKey: "AIzaSyAfFX2mj15m6dIafD9Wcp05wVHSIDfQgYc",
+  apiKey: "AIzaSyAByf9HmFOFJndk5XeKXRfRakfkzFDW55w",
   authDomain: "stb-generator-pro.firebaseapp.com",
   projectId: "stb-generator-pro",
   storageBucket: "stb-generator-pro.firebasestorage.app",
